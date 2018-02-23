@@ -51,6 +51,7 @@ The main entry point is `ABCJS.renderAbc`. Many users won't need to make any oth
 | `downloadLabel` | "download midi" | The text for the MIDI download. If it contains `%T` then that is replaced with the first title. If this is a function, then the result of that function is called. The function takes two parameters: the parsed tune and the zero-based index of the tune in the tunebook. |
 | `preTextDownload` | "" | Text that appears right before the download link (can contain HTML markup). |
 | `postTextDownload` | "" | Text that appears right after the download link (can contain HTML markup). |
+| `downloadClass` | "" | Class to add to the download link. |
 | `preTextInline` | "" | Text that appears right before the MIDI controls (can contain HTML markup). If it contains `%T` then that is replaced with the first title. |
 | `postTextInline` | "" | Text that appears right after the MIDI controls (can contain HTML markup). If it contains `%T` then that is replaced with the first title. |
 | `listener` | null | Function that is called for each midi event. The parameters are the current abcjs element and the current MIDI event. |
