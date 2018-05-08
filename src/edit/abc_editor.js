@@ -28,8 +28,6 @@
 
 /*global document, window, clearTimeout, setTimeout */
 
-var Raphael = require('raphael');
-
 var TuneBook = require('../api/abc_tunebook').TuneBook;
 var parseCommon = require('../parse/abc_common');
 var Parse = require('../parse/abc_parse');
@@ -168,6 +166,38 @@ EditArea.prototype.getElem = function() {
 //
 
 var Editor = function(editarea, params) {
+	// Copy all the options that will be passed through
+	this.abcjsParams = {};
+	var key;
+	if (params.abcjsParams) {
+		for (key in params.abcjsParams) {
+			if (params.abcjsParams.hasOwnProperty(key)) {
+				this.abcjsParams[key] = params.abcjsParams[key];
+			}
+		}
+	}
+	if (params.midi_options) {
+		for (key in params.midi_options) {
+			if (params.midi_options.hasOwnProperty(key)) {
+				this.abcjsParams[key] = params.midi_options[key];
+			}
+		}
+	}
+	if (params.parser_options) {
+		for (key in params.parser_options) {
+			if (params.parser_options.hasOwnProperty(key)) {
+				this.abcjsParams[key] = params.parser_options[key];
+			}
+		}
+	}
+	if (params.render_options) {
+		for (key in params.render_options) {
+			if (params.render_options.hasOwnProperty(key)) {
+				this.abcjsParams[key] = params.render_options[key];
+			}
+		}
+	}
+
 	if (params.indicate_changed)
 		this.indicate_changed = true;
   if (typeof editarea === "string") {
@@ -190,14 +220,14 @@ var Editor = function(editarea, params) {
 	// If the user wants midi, then store the elements that it will be written to. The element could either be passed in as an id,
 	// an element, or nothing. If nothing is passed in, then just put the midi on top of the generated music.
 	if (params.generate_midi) {
-		this.midiParams = params.midi_options || {};
-		if (this.midiParams.generateDownload) {
+	  	this.generate_midi = params.generate_midi;
+		if (this.abcjsParams.generateDownload) {
 			if (typeof params.midi_download_id === 'string')
 				this.downloadMidi = document.getElementById(params.midi_download_id);
 			else if (params.midi_download_id) // assume, if the var is not a string it is an element. If not, it will crash soon enough.
 				this.downloadMidi = params.midi_download_id;
 		}
-		if (this.midiParams.generateInline !== false) { // The default for this is true, so undefined is also true.
+		if (this.abcjsParams.generateInline !== false) { // The default for this is true, so undefined is also true.
 			if (typeof params.midi_id === 'string')
 				this.inlineMidi = document.getElementById(params.midi_id);
 			else if (params.midi_id) // assume, if the var is not a string it is an element. If not, it will crash soon enough.
@@ -213,14 +243,11 @@ var Editor = function(editarea, params) {
     }
   }
   
-  this.parserparams = params.parser_options || {};
   this.onchangeCallback = params.onchange;
 
-  this.engraverparams = params.render_options || {};
-  
   if (params.gui) {
     this.target = document.getElementById(editarea);
-    this.engraverparams.editable = true;
+    this.abcjsParams.editable = true;
   } 
   this.oldt = "";
   this.bReentry = false;
@@ -263,17 +290,16 @@ Editor.prototype.renderTune = function(abc, params, div) {
   var abcParser = Parse();
   abcParser.parse(tunebook.tunes[0].abc, params); //TODO handle multiple tunes
   var tune = abcParser.getTune();
-  var paper = Raphael(div, 800, 400);
-  var engraver_controller = new EngraverController(paper, this.engraverparams);
+  var engraver_controller = new EngraverController(div, this.abcjsParams);
   engraver_controller.engraveABC(tune);
 };
 
 Editor.prototype.redrawMidi = function() {
-	if (this.midiParams && !this.midiPause) {
+	if (this.generate_midi && !this.midiPause) {
 		var event = new window.CustomEvent("generateMidi", {
 			detail: {
 				tunes: this.tunes,
-				midiParams: this.midiParams,
+				abcjsParams: this.abcjsParams,
 				downloadMidiEl: this.downloadMidi,
 				inlineMidiEl: this.inlineMidi,
 				engravingEl: this.div
@@ -298,8 +324,7 @@ Editor.prototype.modelChanged = function() {
   this.bReentry = true;
   this.timerId = null;
   this.div.innerHTML = "";
-  var paper = Raphael(this.div, 800, 400);
-  this.engraver_controller = new EngraverController(paper, this.engraverparams);
+  this.engraver_controller = new EngraverController(this.div, this.abcjsParams);
   this.engraver_controller.engraveABC(this.tunes);
 	this.tunes[0].engraver = this.engraver_controller;	// TODO-PER: We actually want an output object for each tune, not the entire controller. When refactoring, don't save data in the controller.
 	this.redrawMidi();
@@ -311,14 +336,20 @@ Editor.prototype.modelChanged = function() {
     var textprinter = new TextPrinter(this.target, true);
     textprinter.printABC(this.tunes[0]); //TODO handle multiple tunes
   }
-  this.engraver_controller.addSelectListener(this);
+  this.engraver_controller.addSelectListener(this.highlight.bind(this));
   this.updateSelection();
   this.bReentry = false;
 };
 
 // Call this to reparse in response to the printing parameters changing
-Editor.prototype.paramChanged = function(engraverparams) {
-	this.engraverparams = engraverparams;
+Editor.prototype.paramChanged = function(engraverParams) {
+	if (engraverParams) {
+		for (key in engraverParams) {
+			if (engraverParams.hasOwnProperty(key)) {
+				this.abcjsParams[key] = engraverParams[key];
+			}
+		}
+	}
 	this.oldt = "";
 	this.fireChanged();
 };
@@ -344,7 +375,7 @@ Editor.prototype.parseABC = function() {
   this.warnings = [];
   for (var i=0; i<tunebook.tunes.length; i++) {
     var abcParser = new Parse();
-    abcParser.parse(tunebook.tunes[i].abc, this.parserparams);
+    abcParser.parse(tunebook.tunes[i].abc, this.abcjsParams);
     this.tunes[i] = abcParser.getTune();
 	  this.startPos[i] = tunebook.tunes[i].startPos;
     var warnings = abcParser.getWarnings() || [];
@@ -429,7 +460,7 @@ Editor.prototype.isDirty = function() {
 	return this.editarea.initialText !== this.editarea.getString();
 };
 
-Editor.prototype.highlight = function(abcelem, tuneNumber) {
+Editor.prototype.highlight = function(abcelem, tuneNumber, classes) {
 	// TODO-PER: The marker appears to get off by one for each tune parsed. I'm not sure why, but adding the tuneNumber in corrects it for the time being.
 	var offset = (tuneNumber !== undefined) ? this.startPos[tuneNumber] + tuneNumber : 0;
 

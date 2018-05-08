@@ -43,7 +43,7 @@ var flatten;
 	var chordTrackFinished;
 	var chordChannel;
 	var chordInstrument = 0;
-	var drumInstrument = 116;
+	var drumInstrument = 128;
 	var currentChords;
 	var lastChord;
 	var barBeat;
@@ -266,13 +266,10 @@ var flatten;
 		}
 
 		if (elem.startTriplet) {
-			if (elem.startTriplet === 2)
-				multiplier = 3/2;
-			else
-				multiplier=(elem.startTriplet-1)/elem.startTriplet;
+			multiplier = elem.tripletMultiplier;
 		}
 
-		var duration = elem.duration*multiplier;
+		var duration = (elem.durationClass ? elem.durationClass : elem.duration) *multiplier;
 		barBeat += duration;
 
 		// if there are grace notes, then also play them.

@@ -31,7 +31,7 @@ var sequence;
 		options = options || {};
 		var qpm = 180;	// The tempo if there isn't a tempo specified.
 		var program = options.program || 0;	// The program if there isn't a program specified.
-		var transpose = options.transpose || 0;
+		var transpose = options.midiTranspose || 0;
 		var channel = options.channel || 0;
 		var drumPattern = options.drum || "";
 		var drumBars = options.drumBars || 1;
@@ -136,7 +136,7 @@ var sequence;
 						// For each voice in a staff line
 						var voice = staff.voices[k];
 						if (!voices[voiceNumber]) {
-							voices[voiceNumber] = [].concat(startVoice);
+							voices[voiceNumber] = [].concat(JSON.parse(JSON.stringify(startVoice)));
 						}
 						if (staff.clef && staff.clef.type === 'perc') {
 							for (var cl = 0; cl < voices[voiceNumber].length; cl++) {
@@ -203,7 +203,7 @@ var sequence;
 									// The important part is where there is a start repeat, and end repeat, or a first ending.
 									var endRepeat = (elem.type === "bar_right_repeat" || elem.type === "bar_dbl_repeat");
 									var startEnding = (elem.startEnding === '1');
-									var startRepeat = (elem.type === "bar_left_repeat" || elem.type === "bar_dbl_repeat" || elem.type === "bar_thick_thin" || elem.type === "bar_thin_thick" || elem.type === "bar_thin_thin" || elem.type === "bar_right_repeat");
+									var startRepeat = (elem.type === "bar_left_repeat" || elem.type === "bar_dbl_repeat" || elem.type === "bar_right_repeat");
 									if (endRepeat) {
 										var s = startRepeatPlaceholder[voiceNumber];
 										if (!s) s = 0; // If there wasn't a left repeat, then we repeat from the beginning.
@@ -237,9 +237,17 @@ var sequence;
 										case "drumoff": drumOn = false; drumChange = true; break;
 										case "drum": drumPattern = elem.params; drumChange = true; break;
 										case "drumbars": drumBars = elem.params[0]; drumChange = true; break;
+										case "drummap":
+											// This is handled before getting here so it can be ignored.
+											break;
 										case "program":
 											voices[voiceNumber].push({ el_type: 'instrument', program: elem.params[0] });
 											break;
+										case "transpose":
+											voices[voiceNumber].push({ el_type: 'transpose', transpose: elem.params[0] });
+											break;
+										default:
+											console.log("MIDI seq: midi cmd not handled: ", elem.cmd, elem);
 									}
 									if (drumChange) {
 										voices[0].push({el_type: 'drum', params: { pattern: drumPattern, bars: drumBars, intro: drumIntro, on: drumOn}});
@@ -256,6 +264,7 @@ var sequence;
 			}
 		}
 		if (drumIntro) {
+			var pickups = abctune.getPickupLength();
 			// add some measures of rests to the start of each track.
 			for (var vv = 0; vv < voices.length; vv++) {
 				var insertPoint = 0;
@@ -263,8 +272,13 @@ var sequence;
 					insertPoint++;
 				if (voices[vv].length > insertPoint) {
 					for (var w = 0; w < drumIntro; w++) {
-						voices[vv].splice(insertPoint, 0, {el_type: "note", rest: {type: "rest"}, duration: measureLength},
-							{ el_type: "bar" });
+						// If it is the last measure of intro, subtract the pickups.
+						if (pickups === 0 || w < drumIntro-1)
+							voices[vv].splice(insertPoint, 0, {el_type: "note", rest: {type: "rest"}, duration: measureLength},
+								{ el_type: "bar" });
+						else {
+							voices[vv].splice(insertPoint, 0, {el_type: "note", rest: {type: "rest"}, duration: measureLength-pickups});
+						}
 					}
 				}
 			}

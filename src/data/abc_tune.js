@@ -73,7 +73,7 @@ var Tune = function() {
 								return 1/den;
 							}
 							else
-								return null;
+								return 1/4; // No meter was specified, so use this default
 						} else if (meter.type === 'cut_time') {
 							return 1/2;
 						} else {
@@ -83,7 +83,41 @@ var Tune = function() {
 				}
 			}
 		}
-		return null;
+		return 1/4; // No meter was specified, so use this default
+	};
+
+	this.getPickupLength = function() {
+		var pickupLength = 0;
+		for (var i = 0; i < this.lines.length; i++) {
+			if (this.lines[i].staff) {
+				for (var j = 0; j < this.lines[i].staff.length; j++) {
+					for (var v = 0; v < this.lines[i].staff[j].voices.length; v++) {
+						var voice = this.lines[i].staff[j].voices[v];
+						var hasNote = false;
+						for (var el = 0; el < voice.length; el++) {
+							if (voice[el].duration)
+								pickupLength += voice[el].duration;
+							if (pickupLength >= this.getBarLength())
+								pickupLength -= this.getBarLength();
+							if (voice[el].el_type === 'bar')
+								return pickupLength;
+						}
+					}
+				}
+			}
+		}
+		return pickupLength;
+	};
+
+	this.getBarLength = function() {
+		var meter = this.getMeter();
+		var measureLength;
+		switch(meter.type) {
+			case "common_time": measureLength = 1; this.meter = { num: 4, den: 4}; break;
+			case "cut_time": measureLength = 1; this.meter = { num: 2, den: 2}; break;
+			default: measureLength = meter.value[0].num/meter.value[0].den; this.meter = { num: parseInt(meter.value[0].num, 10), den: parseInt(meter.value[0].den,10)};
+		}
+		return measureLength;
 	};
 
 	this.reset = function () {
@@ -612,6 +646,7 @@ var Tune = function() {
 		if (type === 'key') {
 			impliedNaturals = hashParams2.impliedNaturals;
 			delete hashParams2.impliedNaturals;
+			delete hashParams2.explicitAccidentals;
 		}
 
 		// Clone the object because it will be sticking around for the next line and we don't want the extra fields in it.
@@ -756,6 +791,11 @@ var Tune = function() {
 				This.appendElement('scale', null, null, { size: params.scale} );
 		};
 		var createStaff = function(params) {
+			if (params.key && params.key.impliedNaturals) {
+				params.key.accidentals = params.key.accidentals.concat(params.key.impliedNaturals);
+				delete params.key.impliedNaturals;
+			}
+
 			This.lines[This.lineNum].staff[This.staffNum] = {voices: [ ], clef: params.clef, key: params.key, workingClef: params.clef };
 			if (params.stafflines !== undefined) {
 				This.lines[This.lineNum].staff[This.staffNum].clef.stafflines = params.stafflines;
@@ -906,10 +946,19 @@ var Tune = function() {
 	this.addElementToEvents = function(eventHash, element, voiceTimeMilliseconds, top, height, timeDivider, isTiedState) {
 		if (element.hint)
 			return { isTiedState: undefined, duration: 0 };
-		if (element.duration > 0) {
+		var realDuration = element.durationClass ? element.durationClass : element.duration;
+		if (element.abcelem.rest && element.abcelem.rest.type === "spacer")
+			realDuration = 0;
+		if (realDuration > 0) {
+			var es = [];
+			// If there is an invisible rest, then there are not elements, so don't push a null one.
+			for (var i = 0; i < element.elemset.length; i++) {
+				if (element.elemset[i] !== null)
+					es.push(element.elemset[i]);
+			}
 			var isTiedToNext = element.startTie;
 			if (isTiedState !== undefined) {
-				eventHash["event" + isTiedState].elements.push(element.elemset); // Add the tied note to the first note that it is tied to
+				eventHash["event" + isTiedState].elements.push(es); // Add the tied note to the first note that it is tied to
 				if (!isTiedToNext)
 					isTiedState = undefined;
 			} else {
@@ -922,18 +971,46 @@ var Tune = function() {
 						height: height,
 						left: element.x,
 						width: element.w,
-						elements: [element.elemset]
+						elements: [es],
+						startChar: element.abcelem.startChar,
+						endChar: element.abcelem.endChar
 					};
 				else {
 					// If there is more than one voice then two notes can fall at the same time. Usually they would be lined up in the same place, but if it is a whole rest, then it is placed funny. In any case, the left most element wins.
 					eventHash["event" + voiceTimeMilliseconds].left = Math.min(eventHash["event" + voiceTimeMilliseconds].left, element.x);
-					eventHash["event" + voiceTimeMilliseconds].elements.push(element.elemset);
+					eventHash["event" + voiceTimeMilliseconds].elements.push(es);
 				}
 				if (isTiedToNext)
 					isTiedState = voiceTimeMilliseconds;
 			}
 		}
-		return { isTiedState: isTiedState, duration: element.duration / timeDivider };
+		return { isTiedState: isTiedState, duration: realDuration / timeDivider };
+	};
+
+	this.makeVoicesArray = function() {
+		// First make a new array that is arranged by voice so that the repeats that span different lines are handled correctly.
+		var voicesArr = [];
+		for (var line = 0; line < this.engraver.staffgroups.length; line++) {
+			var group = this.engraver.staffgroups[line];
+			var firstStaff = group.staffs[0];
+			var middleC = firstStaff.absoluteY;
+			var top = middleC - firstStaff.top * spacing.STEP;
+			var lastStaff = group.staffs[group.staffs.length - 1];
+			middleC = lastStaff.absoluteY;
+			var bottom = middleC - lastStaff.bottom * spacing.STEP;
+			var height = bottom - top;
+
+			var voices = group.voices;
+			for (var v = 0; v < voices.length; v++) {
+				if (!voicesArr[v])
+					voicesArr[v] = [];
+				var elements = voices[v].children;
+				for (var elem = 0; elem < elements.length; elem++) {
+					voicesArr[v].push({top: top, height: height, elem: elements[elem]});
+				}
+			}
+		}
+		return voicesArr;
 	};
 
 	this.setupEvents = function(startingDelay, timeDivider) {
@@ -944,72 +1021,48 @@ var Tune = function() {
 		// The units we are scanning are in notation units (i.e. 0.25 is a quarter note)
 		var time = startingDelay;
 		var isTiedState;
-		for (var line = 0; line < this.engraver.staffgroups.length; line++) {
-			var group = this.engraver.staffgroups[line];
-			var voices = group.voices;
-			var firstStaff = group.staffs[0];
-			var middleC = firstStaff.absoluteY;
-			var top = middleC - firstStaff.top * spacing.STEP;
-			var lastStaff = group.staffs[group.staffs.length - 1];
-			middleC = lastStaff.absoluteY;
-			var bottom = middleC - lastStaff.bottom * spacing.STEP;
-			var height = bottom - top;
-			var maxVoiceTime = 0;
-			// Put in the notes for all voices, then sort them, then remove duplicates
-			for (var v = 0; v < voices.length; v++) {
-				var voiceTime = time;
-				var voiceTimeMilliseconds = Math.round(voiceTime*1000);
-				var startingRepeatElem = 0;
-				var endingRepeatElem;
-				var elements = voices[v].children;
-				for (var elem = 0; elem < elements.length; elem++) {
-					var element = elements[elem];
-					var ret = this.addElementToEvents(eventHash, element, voiceTimeMilliseconds, top, height, timeDivider, isTiedState);
-					isTiedState = ret.isTiedState;
-					voiceTime += ret.duration;
-					voiceTimeMilliseconds = Math.round(voiceTime*1000);
-					if (element.type === 'bar') {
-						var barType = element.abcelem.type;
-						var endRepeat = (barType === "bar_right_repeat" || barType === "bar_dbl_repeat");
-						var startEnding = (element.abcelem.startEnding === '1');
-						var startRepeat = (barType === "bar_left_repeat" || barType === "bar_dbl_repeat" || barType === "bar_thick_thin" || barType === "bar_thin_thick" || barType === "bar_thin_thin" || barType === "bar_right_repeat");
-						if (endRepeat) {
-							for (var el2 = startingRepeatElem; el2 < endingRepeatElem; el2++) {
-								element = elements[el2];
-								ret = this.addElementToEvents(eventHash, element, voiceTimeMilliseconds, top, height, timeDivider, isTiedState);
-								isTiedState = ret.isTiedState;
-								voiceTime += ret.duration;
-								voiceTimeMilliseconds = Math.round(voiceTime*1000);
-							}
-						}
-						if (startEnding)
-							endingRepeatElem = elem;
-						if (startRepeat)
-							startingRepeatElem = elem;
-					}
-					// if (element.type === 'bar') {
-					// 	if (timingEvents.length === 0 || timingEvents[timingEvents.length - 1] !== 'bar') {
-					// 		if (element.elemset && element.elemset.length > 0 && element.elemset[0].attrs) {
-					// 			var klass = element.elemset[0].attrs['class'];
-					// 			var arr = klass.split(' ');
-					// 			var lineNum;
-					// 			var measureNum;
-					// 			for (var i = 0; i < arr.length; i++) {
-					// 				var match = /m(\d+)/.exec(arr[i]);
-					// 				if (match)
-					// 					measureNum = match[1];
-					// 				match = /l(\d+)/.exec(arr[i]);
-					// 				if (match)
-					// 					lineNum = match[1];
-					// 			}
-					// 			eventHash["bar" + voiceTime] = {type: "bar", seconds: voiceTime, lineNum: lineNum, measureNum: measureNum};
-					// 		}
-					// 	}
-					// }
+		var voices = this.makeVoicesArray();
+		for (var v = 0; v < voices.length; v++) {
+			var voiceTime = time;
+			var voiceTimeMilliseconds = Math.round(voiceTime * 1000);
+			var startingRepeatElem = 0;
+			var endingRepeatElem = -1;
+			var elements = voices[v];
+			for (var elem = 0; elem < elements.length; elem++) {
+				var element = elements[elem].elem;
+				if (element.abcelem.el_type === "tempo") {
+					var bpm = this.getBpm(element.abcelem);
+					var beatLength = this.getBeatLength();
+					var beatsPerSecond = bpm / 60;
+					timeDivider = beatLength * beatsPerSecond;
 				}
-				maxVoiceTime = Math.max(maxVoiceTime, voiceTime);
+				var ret = this.addElementToEvents(eventHash, element, voiceTimeMilliseconds, elements[elem].top, elements[elem].height, timeDivider, isTiedState);
+				isTiedState = ret.isTiedState;
+				voiceTime += ret.duration;
+				voiceTimeMilliseconds = Math.round(voiceTime * 1000);
+				if (element.type === 'bar') {
+					var barType = element.abcelem.type;
+					var endRepeat = (barType === "bar_right_repeat" || barType === "bar_dbl_repeat");
+					var startEnding = (element.abcelem.startEnding === '1');
+					var startRepeat = (barType === "bar_left_repeat" || barType === "bar_dbl_repeat" || barType === "bar_right_repeat");
+					if (endRepeat) {
+						if (endingRepeatElem === -1)
+							endingRepeatElem = elem;
+						for (var el2 = startingRepeatElem; el2 < endingRepeatElem; el2++) {
+							element = elements[el2].elem;
+							ret = this.addElementToEvents(eventHash, element, voiceTimeMilliseconds, elements[elem].top, elements[elem].height, timeDivider, isTiedState);
+							isTiedState = ret.isTiedState;
+							voiceTime += ret.duration;
+							voiceTimeMilliseconds = Math.round(voiceTime * 1000);
+						}
+						endingRepeatElem = -1;
+					}
+					if (startEnding)
+						endingRepeatElem = elem;
+					if (startRepeat)
+						startingRepeatElem = elem;
+				}
 			}
-			time = maxVoiceTime;
 		}
 		// now we have all the events, but if there are multiple voices then there may be events out of order or duplicated, so normalize it.
 		timingEvents = makeSortedArray(eventHash);
@@ -1029,27 +1082,33 @@ var Tune = function() {
 		return { top: top, height: height };
 	}
 
-	this.setTiming = function (bpm, measuresOfDelay) {
-		var meter = this.getMeter();
-		var beatLength = this.getBeatLength();
-		if (!bpm && this.metaText && this.metaText.tempo) {
-			bpm = this.metaText.tempo.bpm;
-			var statedBeatLength = this.metaText.tempo.duration && this.metaText.tempo.duration.length > 0 ? this.metaText.tempo.duration[0] : beatLength;
+	this.getBpm = function(tempo) {
+		var bpm;
+		if (tempo) {
+			bpm = tempo.bpm;
+			var beatLength = this.getBeatLength();
+			var statedBeatLength = tempo.duration && tempo.duration.length > 0 ? tempo.duration[0] : beatLength;
 			bpm = bpm * statedBeatLength / beatLength;
 		}
 		if (!bpm)
 			bpm = 180;
+
+		return bpm;
+	};
+
+	this.setTiming = function (bpm, measuresOfDelay) {
+		var tempo = this.metaText ? this.metaText.tempo : null;
+		if (!bpm)
+			bpm = this.getBpm(tempo);
+
+		var beatLength = this.getBeatLength();
 		var beatsPerSecond = bpm / 60;
 
-		var measureLength;
-		switch(meter.type) {
-			case "common_time": measureLength = 1; this.meter = { num: 4, den: 4}; break;
-			case "cut_time": measureLength = 1; this.meter = { num: 2, den: 2}; break;
-			default: measureLength = meter.value[0].num/meter.value[0].den; this.meter = { num: parseInt(meter.value[0].num, 10), den: parseInt(meter.value[0].den,10)};
-		}
-
+		var measureLength = this.getBarLength();
 
 		var startingDelay = measureLength / beatLength * measuresOfDelay / beatsPerSecond;
+		if (startingDelay)
+			startingDelay -= this.getPickupLength() / beatLength / beatsPerSecond;
 		var timeDivider = beatLength * beatsPerSecond;
 
 		this.noteTimings = this.setupEvents(startingDelay, timeDivider);

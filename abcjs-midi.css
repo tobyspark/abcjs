@@ -30,6 +30,10 @@
 	box-sizing: border-box;
 }
 
+.fa5 .abcjs-inline-midi .abcjs-btn {
+	font-family: "Font Awesome 5 Free";
+	font-weight: 900;
+}
 .abcjs-inline-midi .abcjs-btn:hover {
 	color: #cccccc;
 }
@@ -70,6 +74,15 @@
 
 .abcjs-inline-midi .abcjs-midi-start.abcjs-pushed:before {
 	content: "\f04c"; /*   fa-play [&#xf04b;]    fa-pause [&#xf04c;] */
+}
+
+.abcjs-inline-midi .abcjs-midi-start.abcjs-pushed.abcjs-loading {
+	outline: none;
+	animation: a 1s infinite steps(8);
+}
+
+.abcjs-inline-midi .abcjs-midi-start.abcjs-pushed.abcjs-loading:before {
+	content: "\f110"; /*   fa-loading */
 }
 
 .abcjs-inline-midi .abcjs-midi-progress-background {
@@ -126,4 +139,28 @@
 	width: 32px;
 	padding-left: 2px;
 	box-sizing: border-box;
+}
+
+/* Adding the class "abcjs-large" will make the control easier on a touch device. */
+.abcjs-large .abcjs-inline-midi {
+	height: 52px;
+}
+.abcjs-large .abcjs-btn {
+	width: 56px;
+	height: 52px;
+	font-size: 28px;
+}
+.abcjs-large .abcjs-midi-progress-background {
+	height: 20px;
+	border: 4px solid #cccccc;
+}
+.abcjs-large .abcjs-midi-progress-indicator {
+	height: 28px;
+	top: -8px;
+	width: 40px;
+}
+.abcjs-large .abcjs-midi-clock {
+	font-size: 32px;
+	margin-right: 10px;
+	margin-left: 10px;
 }

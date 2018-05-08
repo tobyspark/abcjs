@@ -14,8 +14,16 @@
 //    DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 //    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+function performanceOk() {
+	if (!('performance' in window))
+		return false;
+	if (!('now' in window.performance))
+		return false;
+	return true;
+}
+
 // Unfortunately, a few versions of Safari don't support the performance interface. For those browsers, MIDI just won't work.
-if ('performance' in window) {
+if (performanceOk()) {
 	if (!('galactic' in window))
 		window.galactic = {};
 	window.galactic.loc = {
@@ -46,7 +54,7 @@ var midi = {};
 	}
 
 	midi.generateMidiDownloadLink = function(tune, midiParams, midi, index) {
-		var divClasses = ['download-midi', 'midi-' + index]
+		var divClasses = ['abcjs-download-midi', 'abcjs-midi-' + index]
 		if (midiParams.downloadClass)
 			divClasses.push(midiParams.downloadClass)
 		var html = '<div class="' + divClasses.join(' ') + '">';
@@ -71,12 +79,22 @@ var midi = {};
 		return label.replace(/%T/g, title);
 	}
 
-	midi.generateMidiControls = function(tune, midiParams, midi, index) {
-		if (!('performance' in window))
+	midi.deviceSupportsMidi = function() {
+		if (!performanceOk())
+			return false;
+		if (midi.midiInlineInitialized === 'not loaded')
+			return false;
+		return true;
+	};
+
+	midi.generateMidiControls = function(tune, midiParams, midi, index, stopOld) {
+		if (!performanceOk())
 			return '<div class="abcjs-inline-midi abcjs-midi-' + index + '">ERROR: this browser doesn\'t support window.performance</div>';
 		if (midi.midiInlineInitialized === 'not loaded')
 			return '<div class="abcjs-inline-midi abcjs-midi-' + index + '">MIDI NOT PRESENT</div>';
 
+		if (stopOld)
+			stopCurrentlyPlayingTune();
 		var title = tune.metaText && tune.metaText.title ? tune.metaText.title : 'Untitled';
 		var options = midiParams.inlineControls || {};
 		if (options.standard === undefined) options.standard = true;
@@ -205,6 +223,8 @@ var midi = {};
 			}).then(function() {
 				midiJsInitialized = true;
 				afterSetup(timeWarp, data, onSuccess);
+			}).catch(function(e) {
+				console.log("MIDI.setup failed:", e.message);
 			});
 		} else {
 			afterSetup(timeWarp, data, onSuccess);
@@ -398,8 +418,10 @@ var midi = {};
 				// else, load this midi from scratch.
 				var onSuccess = function() {
 					startCurrentlySelectedTune();
+					removeClass(target, "abcjs-loading");
 					addClass(parent, 'abcjs-midi-current');
 				};
+				addClass(target, "abcjs-loading");
 				loadMidi(parent, onSuccess);
 			}
 			// Change the element so that the pause icon is shown.
@@ -421,7 +443,21 @@ var midi = {};
 
 	midi.stopPlaying = function() {
 		stopCurrentlyPlayingTune();
+		var playingEl = document.querySelector(".abcjs-midi-current");
+		if (playingEl) {
+			resetProgress(playingEl);
+			var startBtn = find(playingEl, "abcjs-midi-start");
+			if (startBtn)
+				removeClass(startBtn, "abcjs-pushed");
+		}
 	};
+
+	function resetProgress(parent) {
+		var progressIndicator = find(parent, "abcjs-midi-progress-indicator");
+		progressIndicator.style.left = "0px";
+		var clock = find(parent, "abcjs-midi-clock");
+		clock.innerHTML = " 0:00";
+	}
 
 	function onSelection(target) {
 		toggleClass(target, 'abcjs-pushed');
@@ -436,10 +472,7 @@ var midi = {};
 
 		function onSuccess() {
 			addClass(parent, 'abcjs-midi-current');
-			var progressIndicator = find(parent, "abcjs-midi-progress-indicator");
-			progressIndicator.style.left = "0px";
-			var clock = find(parent, "abcjs-midi-clock");
-			clock.innerHTML = " 0:00";
+			resetProgress(parent);
 			if (callback)
 				callback();
 		}

@@ -21,6 +21,7 @@ var parseDirective = require('./abc_parse_directive');
 var ParseHeader = require('./abc_parse_header');
 var parseKeyVoice = require('./abc_parse_key_voice');
 var Tokenizer = require('./abc_tokenizer');
+var transpose = require('./abc_transpose');
 
 var Tune = require('../data/abc_tune');
 
@@ -191,9 +192,10 @@ var Parse = function() {
 				chord[2] = null;
 				chord[3] = { x: x.value, y: y.value };
 			} else {
-				chord[1] = chord[1].replace(/([ABCDEFG])b/g, "$1♭");
-				chord[1] = chord[1].replace(/([ABCDEFG])#/g, "$1♯");
+				chord[1] = chord[1].replace(/([ABCDEFG0-9])b/g, "$1♭");
+				chord[1] = chord[1].replace(/([ABCDEFG0-9])#/g, "$1♯");
 				chord[2] = 'default';
+				chord[1] = transpose.chordName(multilineVars, chord[1]);
 			}
 			return chord;
 		}
@@ -367,6 +369,16 @@ var Parse = function() {
 		return [ret.len+retRep.len, ret.token, retRep.token];
 	};
 
+	var tripletQ = {
+		2: 3,
+		3: 2,
+		4: 3,
+		5: 2, // TODO-PER: not handling 6/8 rhythm yet
+		6: 2,
+		7: 2, // TODO-PER: not handling 6/8 rhythm yet
+		8: 3,
+		9: 2 // TODO-PER: not handling 6/8 rhythm yet
+	};
 	var letter_to_open_slurs_and_triplets =  function(line, i) {
 		// consume spaces, and look for all the open parens. If there is a number after the open paren,
 		// that is a triplet. Otherwise that is a slur. Collect all the slurs and the first triplet.
@@ -379,25 +391,37 @@ var Parse = function() {
 						warn("Can't nest triplets", line, i);
 					else {
 						ret.triplet = line.charAt(i+1) - '0';
+						ret.tripletQ = tripletQ[ret.triplet];
+						ret.num_notes = ret.triplet;
 						if (i+2 < line.length && line.charAt(i+2) === ':') {
-							// We are expecting "(p:q:r" or "(p:q" or "(p::r" we are only interested in the first number (p) and the number of notes (r)
+							// We are expecting "(p:q:r" or "(p:q" or "(p::r"
+							// That is: "put p notes into the time of q for the next r notes"
 							// if r is missing, then it is equal to p.
+							// if q is missing, it is determined from this table:
+							// (2 notes in the time of 3
+							// (3 notes in the time of 2
+							// (4 notes in the time of 3
+							// (5 notes in the time of n | if time sig is (6/8, 9/8, 12/8), n=3, else n=2
+							// (6 notes in the time of 2
+							// (7 notes in the time of n
+							// (8 notes in the time of 3
+							// (9 notes in the time of n
 							if (i+3 < line.length && line.charAt(i+3) === ':') {
+								// The second number, 'q', is not present.
 								if (i+4 < line.length && (line.charAt(i+4) >= '1' && line.charAt(i+4) <= '9')) {
 									ret.num_notes = line.charAt(i+4) - '0';
 									i += 3;
 								} else
 									warn("expected number after the two colons after the triplet to mark the duration", line, i);
 							} else if (i+3 < line.length && (line.charAt(i+3) >= '1' && line.charAt(i+3) <= '9')) {
-								// ignore this middle number
+								ret.tripletQ = line.charAt(i+3) - '0';
 								if (i+4 < line.length && line.charAt(i+4) === ':') {
 									if (i+5 < line.length && (line.charAt(i+5) >= '1' && line.charAt(i+5) <= '9')) {
 										ret.num_notes = line.charAt(i+5) - '0';
 										i += 4;
 									}
 								} else {
-									ret.num_notes = ret.triplet;
-									i += 3;
+									i += 2;
 								}
 							} else
 								warn("expected number after the triplet to mark the duration", line, i);
@@ -481,9 +505,17 @@ var Parse = function() {
 						case 'slur': if (el.el_type === 'note' && el.pitches !== null) word_list.shift(); break;
 						case 'bar': if (el.el_type === 'bar') word_list.shift(); break;
 					}
+					if (el.el_type !== 'bar') {
+						if (el.lyric === undefined)
+							el.lyric = [{syllable: "", divider: " "}];
+						else
+							el.lyric.push({syllable: "", divider: " "});
+					}
 				} else {
 					if (el.el_type === 'note' && el.rest === undefined && !inSlur) {
 						var lyric = word_list.shift();
+						if (lyric.syllable)
+							lyric.syllable = lyric.syllable.replace(/ +/g,'\xA0');
 						if (el.lyric === undefined)
 							el.lyric = [ lyric ];
 						else
@@ -651,6 +683,7 @@ var Parse = function() {
 				case 'g':
 					if (state === 'startSlur' || state === 'sharp2' || state === 'flat2' || state === 'pitch') {
 						el.pitch = pitches[line.charAt(index)];
+						transpose.note(multilineVars, el);
 						state = 'octave';
 						// At this point we have a valid note. The rest is optional. Set the duration in case we don't get one below
 						if (canHaveBrokenRhythm && multilineVars.next_note_duration !== 0) {
@@ -660,7 +693,8 @@ var Parse = function() {
 						} else
 							el.duration = multilineVars.default_length;
 						// If the clef is percussion, there is probably some translation of the pitch to a particular drum kit item.
-						if (multilineVars.clef && multilineVars.clef.type === "perc") {
+						if ((multilineVars.clef && multilineVars.clef.type === "perc") ||
+							(multilineVars.currentVoice && multilineVars.currentVoice.clef === "perc")) {
 							var key = line.charAt(index);
 							if (el.accidental) {
 								var accMap = { 'dblflat': '__', 'flat': '_', 'natural': '=', 'sharp': '^', 'dblsharp': '^^'};
@@ -824,8 +858,28 @@ var Parse = function() {
 		var params = { startChar: -1, endChar: -1};
 		if (multilineVars.partForNextLine.length)
 			params.part = multilineVars.partForNextLine;
-		params.clef = multilineVars.currentVoice && multilineVars.staves[multilineVars.currentVoice.staffNum].clef !== undefined ? parseCommon.clone(multilineVars.staves[multilineVars.currentVoice.staffNum].clef) : parseCommon.clone(multilineVars.clef) ;
-		params.key = parseKeyVoice.deepCopyKey(multilineVars.key);
+		params.clef = multilineVars.currentVoice && multilineVars.staves[multilineVars.currentVoice.staffNum].clef !== undefined ? parseCommon.clone(multilineVars.staves[multilineVars.currentVoice.staffNum].clef) : parseCommon.clone(multilineVars.clef);
+		var scoreTranspose = multilineVars.currentVoice ? multilineVars.currentVoice.scoreTranspose : 0;
+		params.key = parseKeyVoice.standardKey(multilineVars.key.root+multilineVars.key.acc+multilineVars.key.mode, multilineVars.key.root, multilineVars.key.acc, scoreTranspose);
+		params.key.mode = multilineVars.key.mode;
+		if (multilineVars.key.impliedNaturals)
+			params.key.impliedNaturals = multilineVars.key.impliedNaturals;
+		if (multilineVars.key.explicitAccidentals) {
+			for (var i = 0; i < multilineVars.key.explicitAccidentals.length; i++) {
+				var found = false;
+				for (var j = 0; j < params.key.accidentals.length; j++) {
+					if (params.key.accidentals[j].note === multilineVars.key.explicitAccidentals[i].note) {
+						// If the note is already in the list, override it with the new value
+						params.key.accidentals[j].acc = multilineVars.key.explicitAccidentals[i].acc;
+						found = true;
+					}
+				}
+				if (!found)
+					params.key.accidentals.push(multilineVars.key.explicitAccidentals[i]);
+			}
+		}
+		if (params.key.explicitAccidentals)
+			delete params.key.explicitAccidentals;
 		parseKeyVoice.addPosToKey(params.clef, params.key);
 		if (multilineVars.meter !== null) {
 			if (multilineVars.currentVoice) {
@@ -872,6 +926,8 @@ var Parse = function() {
 		if (multilineVars.barNumbers === 0 && isFirstVoice && multilineVars.currBarNumber !== 1)
 			params.barNumber = multilineVars.currBarNumber;
 		tune.startNewLine(params);
+		if (multilineVars.key.impliedNaturals)
+			delete multilineVars.key.impliedNaturals;
 
 		multilineVars.partForNextLine = "";
 	}
@@ -1223,6 +1279,7 @@ var Parse = function() {
 								warn("Can't nest triplets", line, i);
 							else {
 								el.startTriplet = ret.triplet;
+								el.tripletMultiplier = ret.tripletQ / ret.triplet;
 								tripletNotesLeft = ret.num_notes === undefined ? ret.triplet : ret.num_notes;
 							}
 						}
@@ -1519,11 +1576,18 @@ var Parse = function() {
 		// switches.print: format for the page instead of the browser.
 		// switches.format: a hash of the desired formatting commands.
 		// switches.hint_measures: put the next measure at the end of the current line.
+		// switches.transpose: change the key signature, chords, and notes by a number of half-steps.
 		if (!switches) switches = {};
 		tune.reset();
 		if (switches.print)
 			tune.media = 'print';
 		multilineVars.reset();
+		if (switches.visualTranspose) {
+			multilineVars.globalTranspose = parseInt(switches.visualTranspose);
+			if (multilineVars.globalTranspose === 0)
+				multilineVars.globalTranspose = undefined;
+		} else
+			multilineVars.globalTranspose = undefined;
 		header.reset(tokenizer, warn, multilineVars, tune);
 
 		// Take care of whatever line endings come our way

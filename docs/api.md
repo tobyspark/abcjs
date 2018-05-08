@@ -6,11 +6,12 @@ The main entry point is `ABCJS.renderAbc`. Many users won't need to make any oth
 | ------------- | ----------- |
 | `integer = ABCJS.numberOfTunes(tunebookString)` | Returns the number of tunes found in the tunebook. |
 | `tunebook = new ABCJS.TuneBook(tunebookString)` | Returns a `TuneBook` object, describing the tunebook passed in. |
-| `tuneObjectArray = ABCJS.renderAbc(output, tunebookString, parserParams, engraverParams, renderParams)` | Completely renders the tunebook. |
-| `tuneObjectArray = ABCJS.renderMidi(output, tunebookString, parserParams, midiParams, renderParams)` | Completely creates midi for the tunebook. |
+| `tuneObjectArray = ABCJS.renderAbc(output, tunebookString, params)` | Completely renders the tunebook. |
+| `tuneObjectArray = ABCJS.renderMidi(output, tunebookString, params)` | Completely creates midi for the tunebook. |
 | `ABCJS.startAnimation(outputElement, tuneObject, animationParams)` | Puts an animated cursor on the rendered music.  |
 | `ABCJS.stopAnimation()` | Stops the animation that was started with `startAnimation`. |
 | `ABCJS.pauseAnimation(pause)` | Pauses/resumes the animation that was started with `startAnimation`. Pass `true` or `false` to pause or resume. |
+| `ABCJS.midi.deviceSupportsMidi()` | Returns true if the device and browser is capable of playing MIDI. |
 
 | Parameters | Description |
 | ------------- | ----------- |
@@ -19,16 +20,17 @@ The main entry point is `ABCJS.renderAbc`. Many users won't need to make any oth
 | `outputElement` | This is the DOM element that was originally passed in when the tune was rendered. |
 | `tuneObject` | This is the object that is created by the rendering process. |
 | `tuneObjectArray` | An array of `tuneObject`. |
-| All items ending in `Params` | A hash of values. See below for the possible keys. |
+| `params` | A hash of values. See below for the possible keys. |
 
-| `parserParams` | Default | Description |
+| `params` (for parser) | Default | Description |
 | ------------- | ----------- | ----------- |
+|`visualTranspose` | 0 | Transposes the written music by the number of half-steps passed. Use a negative number to transpose down in pitch. |
 | `print` | false | pay attention to margins and other formatting commands that don't make sense in a web page |
 | `header_only` | false | only parse the header |
 | `stop_on_warning` | false | only parse until the first warning is encountered |
 | `hint_measures` | false | repeat the next measure at the end of the previous line, with a unique css class. |
 
-| `engraverParams` | Default | Description |
+| `params` (for engraver) | Default | Description |
 | ------------- | ----------- | ----------- |
 | `scale` | 1 | If the number passed is between zero and one, then the music is printed smaller, if above one, then it is printed bigger. |
 | `staffwidth` | 740 | The width of the music, in pixels. |
@@ -36,25 +38,26 @@ The main entry point is `ABCJS.renderAbc`. Many users won't need to make any oth
 | `paddingbottom` | 30 | The spacing that the music should have on the web page. |
 | `paddingright` | 50 | The spacing that the music should have on the web page. |
 | `paddingleft` | 15 | The spacing that the music should have on the web page. |
-| `editable` | false | If true, then when a note is clicked, it is highlighted and a callback allows the editor to move the cursor. |
 | `add_classes` | false | If true, then each element that is drawn on the SVG will have an identifying class with it that you can use to style, move, or hide the element. |
-| `listener` | null | This is an object containing up to two functions. The format is: `{ highlight: function(abcElem, tuneNumber, classes) {}, modelChanged: function(abcElem) {} }` The highlight function is called whenever the user clicks on a note or selects a series of notes. The modelChanged function is called whenever the user has changed the music visually. |
-| `responsive` | undefined | The strategy for responsiveness. `"resize"` will make the svg take up whatever width is available for the container.
+| `clickListener` | null | Callback function. The format is: `function(abcElem, tuneNumber, classes) {}` This is called whenever the user clicks on a note or selects a series of notes. |
+| `responsive` | undefined | The strategy for responsiveness. `"resize"` will make the svg take up whatever width is available for the container. |
 
-| `midiParams` | Default | Description |
+| `params` (for midi) | Default | Description |
 | ------------- | ----------- | ----------- |
 | `qpm` | 180 | The tempo, if not specified in abcString. |
 | `program` | 0 | The midi program (aka "instrument") to use, if not specified in abcString. |
-| `transpose` | 0 | The number of half-steps to transpose the everything, if not specified in abcString. |
+| `midiTranspose` | 0 | The number of half-steps to transpose the everything, if not specified in abcString. |
+| `voicesOff` | false | Play the metronome and accompaniment; do the animation callbacks, but don't play any melody lines. |
 | `generateDownload` | false | Whether to generate a download MIDI link. |
 | `generateInline` | true | Whether to generate the inline MIDI controls. |
+| `downloadClass` | "" | Add classes to the download controls. The classes `abcjs-download-midi` and `abcjs-midi-xxx` where `xxx` is the index of the tune are already added. This is appended to those classes. |
 | `downloadLabel` | "download midi" | The text for the MIDI download. If it contains `%T` then that is replaced with the first title. If this is a function, then the result of that function is called. The function takes two parameters: the parsed tune and the zero-based index of the tune in the tunebook. |
 | `preTextDownload` | "" | Text that appears right before the download link (can contain HTML markup). |
 | `postTextDownload` | "" | Text that appears right after the download link (can contain HTML markup). |
 | `downloadClass` | "" | Class to add to the download link. |
 | `preTextInline` | "" | Text that appears right before the MIDI controls (can contain HTML markup). If it contains `%T` then that is replaced with the first title. |
 | `postTextInline` | "" | Text that appears right after the MIDI controls (can contain HTML markup). If it contains `%T` then that is replaced with the first title. |
-| `listener` | null | Function that is called for each midi event. The parameters are the current abcjs element and the current MIDI event. |
+| `midiListener` | null | Function that is called for each midi event. The parameters are the current abcjs element and the current MIDI event. |
 | `animate` | null | Whether to do a "bouncing ball" effect on the visual music. `{ listener: callback, target: output of ABCJS.renderAbc, qpm: tempo }` This calls the listener whenever the current note has changed. It is called with both the last selected note and the newly selected note. The callback parameters are arrays of svg elements. |
 | `context` | null | A string that is passed back to both the listener and animate callbacks. |
 | `inlineControls` | { selectionToggle: false, loopToggle: false, standard: true, tempo: false, startPlaying: false } | These are the options for which buttons and functionality appear in the inline controls. This is a hash, and is defined below. |
@@ -81,16 +84,16 @@ If an exact tempo line is supplied with the `Q:` line, then that tempo is used. 
 |adagietto|74|
 |andante|80|
 |andantino|88|
-|"marcia moderato"|84|
-|"andante moderato"|100|
+|marcia moderato|84|
+|andante moderato|100|
 |moderato|112|
 |allegretto|116|
-|"allegro moderato"|120|
+|allegro moderato|120|
 |allegro|126|
 |animato|132|
 |agitato|140|
 |veloce|148|
-|"mosso vivo"|156|
+|mosso vivo|156|
 |vivace|164|
 |vivacissimo|172|
 |allegrissimo|176|
@@ -102,20 +105,22 @@ See the ABC documentation for the correct way to format the string that is passe
 ```
   const drumBeats = {
     // the array is [0]=drum [1]=drumIntro
-    "2/4": ["dd 92 90 60 30", 2],
-    "3/4": ["ddd 92 90 90 60 30 30", 1],
-    "4/4": ["dddd 92 90 90 90 60 30 30 30", 1],
-    "5/4": ["ddddd 92 90 90 92 90 60 30 30 60 30", 1],
-    "Cut Time": ["dd 92 90 60 30", 2],
-    "6/8": ["dd 92 90 60 30", 2],
-    "9/8": ["ddd 92 90 90 60 30 30", 1],
-    "12/8": ["dddd 92 90 90 90 60 30 30 30", 1]
+    "2/4": ["dd 76 77 60 30", 2],
+    "3/4": ["ddd 76 77 77 60 30 30", 1],
+    "4/4": ["dddd 76 77 77 77 60 30 30 30", 1],
+    "5/4": ["ddddd 76 77 77 76 77 60 30 30 60 30", 1],
+    "Cut Time": ["dd 76 77 60 30", 2],
+    "6/8": ["dd 76 77 60 30", 2],
+    "9/8": ["ddd 76 77 77 60 30 30", 1],
+    "12/8": ["dddd 76 77 77 77 60 30 30 30", 1]
   };
 ```
 A more complicated example that has the drum pattern fall over two measures of 2/4 time (This is a typical Bulgar pattern):
 ```
 { drum: "d2dd2ddz", drumBars: 2, drumIntro: 2 }
 ```
+
+Note that the default soundfont that is used by abcjs contains sounds for pitches **27** through **87**. You can experiment with any of them for different effects.
 
 | `inlineControls` | Default | Description |
 | ------------- | ----------- | ----------- |
@@ -141,10 +146,10 @@ A more complicated example that has the drum pattern fall over two measures of 2
 
 | `animationParams` | Default | Description |
 | ------------- | ----------- | ----------- |
-| hideFinishedMeasures | false | true or false |
-| hideCurrentMeasure | false | true or false |
-| showCursor | false | true or false |
-| bpm | whatever is in the Q: field | number of beats per minute. |
+| `hideFinishedMeasures` | false | true or false |
+| `hideCurrentMeasure` | false | true or false |
+| `showCursor` | false | true or false |
+| `bpm` | whatever is in the Q: field | number of beats per minute. |
 
 NOTE: To use animation, you MUST have `{ add_classes: true }` in the `engraverParams`. Also, the cursor is not visible unless you add some css. Often this will be something like either `.cursor { background-color: #ffffc0; opacity: 0.5 }` or `.cursor { border-left: 1px solid black; }`
 
@@ -165,7 +170,7 @@ The following assumes you've created a `TuneBook` object like this: `var tuneboo
 `tuneObject` contains a structure which is a machine-friendly version of the abc string that it was created from. It is the class `ABCJS.data.Tune` and is basically some meta-information and an array of each line in the tune. The format of that data is subject to change. 
 
 | css classes (assuming the SVG element is `.paper`) | Description |
-| `.paper path.note_selected, .paper text.note_selected` | The color that the selected note or other element is |
+| `.paper path.abcjs-note_selected, .paper text.abcjs-note_selected` | The color that the selected note or other element is |
 
 ## classes
 
@@ -173,23 +178,32 @@ If you use, `{ add_classes: true }`, then the following classes are attached to 
 
 | class | description |
 | ------------- | ----------- |
-| meta-top | Everything that is printed before the first staff line. |
-| title | The line specified by T: |
-| text | Extra text that is not part of the music. |
-| staff-extra | Clefs, key signatures, time signatures. |
-| tempo | The tempo marking. |
-| meta-bottom | Everything that is printed after all the music. |
-| staff  | The horizontal lines that make up the staff; ledger lines. |
-| l1, l2, etc. | (lower case L, followed by a number) The staff line number, starting at one. | 
-| m1, m2, etc. | The measure count from the START OF THE LINE. |
-| top-line | The top horizontal line of a staff. |
-| symbol | Any special symbol, like a trill. |
-| chord | The chord symbols, specified in quotes. |
-| note | Everything to do with a note. |
-| bar | The bar lines. |
-| slur | Slurs and ties. |
-| abc-lyric | The lyric line. |
-
+| abcjs-meta-top | Everything that is printed before the first staff line. |
+| abcjs-title | The line specified by T: |
+| abcjs-text | Extra text that is not part of the music. |
+| abcjs-staff-extra | Clefs, key signatures, time signatures. |
+| abcjs-tempo | The tempo marking. |
+| abcjs-meta-bottom | Everything that is printed after all the music. |
+| abcjs-staff  | The horizontal lines that make up the staff; ledger lines. |
+| abcjs-l0, abcjs-l1, etc. | (lower case L, followed by a number) The staff line number, starting at zero. | 
+| abcjs-m0, abcjs-m1, etc. | The measure count from the START OF THE LINE. |
+| abcjs-n0, abcjs-n1, etc. | The note count from the START OF THE MEASURE. |
+| abcjs-p-1, abcjs-p1, etc. | The y-position of the note (where middle-C is zero). |
+| abcjs-d0-25, etc. | The duration of the note. (Replace the dash with a decimal point. That is, the example is a duration of 0.25, or a quarter note.) |
+| abcjs-v0, abcjs-v1, etc. | the voice number, starting at zero. |
+| abcjs-top-line | The top horizontal line of a staff. |
+| abcjs-symbol | Any special symbol, like a trill. |
+| abcjs-chord | The chord symbols, specified in quotes. |
+| abcjs-note | Everything to do with a note. |
+| abcjs-rest | Everything to do with a rest. |
+| abcjs-decoration | Everything to do with the extra symbols, like crescendo. |
+| abcjs-bar | The bar lines. |
+| abcjs-slur | Slurs and ties. |
+| abcjs-lyric | The lyric line. |
+| abcjs-ending | The line and decoration for the 1st and 2nd ending. |
+| abcjs-beam-elem | The beams connecting eighth notes together. |
+| abcjs-top-line | This marks the top line of each staff. This is useful if you are trying to find where on the page the music has been drawn. |
+| abcjs-top-of-system | This marks the top of each set of staves. This is useful if you are trying to find where on the page the music has been drawn. |
 
 # abcjs editor
 
@@ -235,9 +249,7 @@ Typical usage is:
 | `warnings_id` | if present, the HTML id to place the warnings. Otherwise they are placed in the same div as the paper. |
 | `onchange` | if present, the callback function to call whenever there has been a change. |
 | `gui` | if present, the paper can send changes back to the editor (presumably because the user changed something directly.) |
-| `parser_options` | options to send to the parser engine. |
-| `midi_options` | options to send to the midi engine. |
-| `render_options` | options to send to the render engine. |
+| `abcjsParams` | options to send to abcjs when re-rendering both the visual and the midi. |
 | `indicate_changed` | the dirty flag is set if this is true. |
 
 # abcjs plugin
@@ -254,7 +266,7 @@ Certain options for the plugin can be changed like this, if executed on page loa
 
 ```html
 <script type="text/javascript">
-  ABCJS.plugin.show_midi = false;
+  ABCJS.plugin.hide_abc = true;
 </script>
 ```
 
@@ -262,10 +274,10 @@ The options available in abc_plugin are:
 
 | Option | Description |
 | ------------- | ----------- |
-| `show_midi` | NO LONGER SUPPORTED: This options has been removed. |
+| `show_midi` | NO LONGER SUPPORTED: This option has been removed. |
 | `hide_abc` | Whether the abc text should be hidden or not. (false by default) since 1.0.2 |
 | `render_before` | Whether the rendered score should appear before the abc text. (false by default) since 1.0.2 |
-| `midi_options` | NO LONGER SUPPORTED: This options has been removed. |
+| `midi_options` | NO LONGER SUPPORTED: This option has been removed. |
 | `auto_render_threshold` | Number of tunes beyond which auto rendering is disabled; instead, each tune is accompanied by a "show" button. (default value is 20) since 1.0.2 |
 | `show_text` | Text to be included on the "show" button before the tune title. (default value is "show score for: ") since 1.0.2 |
 | `render_options` | The options to be used for the `engraverParams` |

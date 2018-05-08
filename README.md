@@ -4,22 +4,37 @@
 
 This library makes it easy to incorporate **sheet music** into your **websites**. You can also turn visible **ABC** text into sheet music on websites that you don't own using a greasemonkey script, or change your own website that contains ABC text with no other changes than the addition of one javascript file. You can also generate **MIDI files** or play them directly in your browser.
 
-**Special notes for Version 3.3.0:**
+## Browser/device support
 
-| Important Breaking Change for MIDI users! |
-|  ----------- |
-| If you were previously using the npm version like this: |
-| `import abcjs from "abcjs"` |
-| and using the midi functionality, you need to change that to: |
-| `import abcjs from "abcjs/midi"` |
+* The visual part of this library is supported from IE9 and newer, Safari 5.1 and newer, and all modern browsers.
 
-* The build process has switched over to webpack. The minimization is now done with UglifyJS. This shouldn't cause any side effects.
+* The audio part of this library is much more limited: it doesn't work in IE, it only works in Safari 9 and 10, it does NOT work in Edge, but does work fine in all other modern browsers.
+Note that it takes computer resources to play the sound, so a sufficiently fast computer is needed. Research is being done to improve the performance in future versions.
 
-* This folder structure has changed dramatically. It shouldn't cause any side effects.
+## **Special notes for Version 5.0.0:**
 
-* The "editor" version of the library has been rolled into the "basic" version. There is only the "basic" and "midi" versions now, since the editor code doesn't add much to the size.
+### Raphael
+* The dependency on the Raphael library has been removed! This has made the minimized package 90K smaller, and has increased the speed of generating the SVG image by about 6 times!
 
-* The npm version has a new export called `signature` that gives your javascript code access to some version information.
+For the most common use of creating either the sheet music or the audio, there isn't any change.
+
+However, if you use the animation callback in the audio to manipulate the notes, then be aware that, instead of receiving elements that are wrapped in a Raphael object, you now receive the actual
+SVG element. For the most common example of the animation functionality, the following was recommended to change the color of notes:
+```
+element.attr({ fill: color });
+```
+That should be changed to:
+```
+element.setAttribute("fill", color);
+```
+
+* If you do specific manipulation of the SVG, you will need to retest your code. The generated SVG, while it looks the same on the page, has changed somewhat. The selectors you use may return different results.
+
+## **Special notes for Version 4.0.0:**
+
+* **BREAKING CHANGE**: The names of all the classes that are generated are now prefixed with `abcjs-`. Any code that searched for particular class names before will have to be adjusted.
+
+* The parameters have been combined into one set of parameters, instead of three sets like previous versions. The old way of calling the parameters will still work, but you are encouraged to use the new, simplified approach going forward.
 
 ## Important Resources:
  
@@ -81,13 +96,13 @@ If you are looking at someone else's website and see ABC on the page and want to
 
 Here are the latest versions. You can just download one of these:
 
-- [Basic](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_basic_3.3.2-min.js)
+- [Basic](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_basic_5.0.1-min.js)
 
-- [Basic+MIDI](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_midi_3.3.2-min.js)
+- [Basic+MIDI](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_midi_5.0.1-min.js)
 
-- [Plugin](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin_3.3.2-min.js)
+- [Plugin](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin_5.0.1-min.js)
 
-- [Greasemonkey script](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin_3.3.2.user.js)
+- [Greasemonkey script](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin_5.0.1.user.js)
 
 - [Styles for the MIDI control](https://raw.github.com/paulrosen/abcjs/master/abcjs-midi.css)
 
@@ -108,7 +123,14 @@ Here are the latest versions. You can just download one of these:
 | http://www.eastofcleveland.com/flashcards/notereading.php | (Educational) |
 | http://tunearch.org | |
 |http://www.norbeck.nu/abc|(tune collection)|
+|http://ccm.secrice.com/|(CCM scores for playing the guitar)|
+|http://bushtraditions.wiki/tunes/|(Australian Traditional Music Tunes Archive)|
 
 Let us know if you want to be listed!
 
 **Great big thanks to [mudcube](https://github.com/mudcube/MIDI.js) for the excellent work on midi.js!**
+
+## Supported by BrowserStack
+If you aren't using the same browser and machine that I use, you can thank [BrowserStack](https://browserstack.com/) for their support of this open-source project.
+
+![BrowserStack](https://cdn.rawgit.com/paulrosen/abcjs/master/docs/browserstack-logo-600x315.png)

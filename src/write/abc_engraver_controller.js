@@ -20,7 +20,6 @@
 var spacing = require('./abc_spacing');
 var AbstractEngraver = require('./abc_abstract_engraver');
 var Renderer = require('./abc_renderer');
-var Raphael = require('raphael');
 
 /**
  * @class
@@ -33,18 +32,17 @@ var Raphael = require('raphael');
  * elements in ABCJS AES know their "source data" in the ABCJS AST, and their "target shape" 
  * in the renderer for highlighting purposes
  *
- * @param {Object} paper SVG like object with methods path, text, etc.
+ * @param {Object} paper div element that will wrap the SVG
  * @param {Object} params all the params -- documented on github //TODO-GD move some of that documentation here
  */
 var EngraverController = function(paper, params) {
   params = params || {};
-  if (!paper) {
-  	// if a Raphael object was not passed in, create on here.
-	  paper = Raphael(params.elementId, params.staffwidth, params.staffheight);
-  }
   this.responsive = params.responsive;
   this.space = 3*spacing.SPACE;
-  this.scale = params.scale || undefined;
+  this.scale = params.scale ? parseFloat(params.scale) : 0;
+  if (!(this.scale > 0.1))
+  	this.scale = undefined;
+
 	if (params.staffwidth) {
 		// Note: Normally all measurements to the engraver are in POINTS. However, if a person is formatting for the
 		// screen and directly inputting the width, then it is more logical to have the measurement in pixels.
@@ -56,18 +54,10 @@ var EngraverController = function(paper, params) {
 	}
   this.editable = params.editable || false;
 	this.listeners = [];
-	if (params.listener)
-		this.addSelectListener(params.listener);
+	if (params.clickListener)
+		this.addSelectListener(params.clickListener);
 
-	// HACK-PER: Raphael doesn't support setting the class of an element, so this adds that support. This doesn't work on IE8 or less, though.
-	this.usingSvg = (window.SVGAngle || document.implementation.hasFeature("http://www.w3.org/TR/SVG11/feature#BasicStructure", "1.1") ? true : false); // Same test Raphael uses
-	if (this.usingSvg && params.add_classes)
-		Raphael._availableAttrs['class'] = "";
-	Raphael._availableAttrs['text-decoration'] = "";
-	Raphael._availableAttrs['data-vertical'] = "";
-
-  //TODO-GD factor out all calls directly made to renderer.paper and fix all the coupling issues below
-  this.renderer=new Renderer(paper, params.regression);
+  this.renderer=new Renderer(paper, params.regression, params.add_classes);
 	this.renderer.setPaddingOverride(params);
   this.renderer.controller = this; // TODO-GD needed for highlighting
 
@@ -127,6 +117,8 @@ EngraverController.prototype.engraveTune = function (abctune, tuneNumber) {
 	this.renderer.noteNumber = null;
 	this.renderer.setPrintMode(abctune.media === 'print');
 	var scale = abctune.formatting.scale ? abctune.formatting.scale : this.scale;
+	if (this.responsive === "resize") // The resizing will mess with the scaling, so just don't do it explicitly.
+		scale = undefined;
 	if (scale === undefined) scale = this.renderer.isPrint ? 0.75 : 1;
 	this.renderer.setPadding(abctune);
 	this.engraver = new AbstractEngraver(abctune.formatting.bagpipes,this.renderer, tuneNumber);
@@ -156,7 +148,7 @@ EngraverController.prototype.engraveTune = function (abctune, tuneNumber) {
 	for(i=0; i<abctune.lines.length; i++) {
 		abcLine = abctune.lines[i];
 		if (abcLine.staff) {
-			this.setXSpacing(abcLine.staffGroup, abctune.formatting, i === abctune.lines.length - 1);
+			this.setXSpacing(abcLine.staffGroup, abctune.formatting, i === abctune.lines.length - 1, false);
 			if (abcLine.staffGroup.w > maxWidth) maxWidth = abcLine.staffGroup.w;
 		}
 	}
@@ -229,12 +221,15 @@ function calcHorizontalSpacing(isLastLine, stretchLast, targetWidth, lineWidth, 
  * @param {boolean} isLastLine is this the last line to be printed?
  * @private
  */
-EngraverController.prototype.setXSpacing = function (staffGroup, formatting, isLastLine) {
+EngraverController.prototype.setXSpacing = function (staffGroup, formatting, isLastLine, debug) {
    var newspace = this.space;
-  for (var it = 0; it < 3; it++) { // TODO-PER: shouldn't need this triple pass any more, but it does slightly affect the coordinates.
-	  staffGroup.layout(newspace, this.renderer, false);
+   //var debug = true;
+  for (var it = 0; it < 8; it++) { // TODO-PER: shouldn't need multiple passes, but each pass gets it closer to the right spacing. (Only affects long lines: normal lines break out of this loop quickly.)
+	  staffGroup.layout(newspace, this.renderer, debug);
 	  var stretchLast = formatting.stretchlast ? formatting.stretchlast : false;
 		newspace = calcHorizontalSpacing(isLastLine, stretchLast, this.width+this.renderer.padding.left, staffGroup.w, newspace, staffGroup.spacingunits, staffGroup.minspace);
+		if (debug)
+			console.log("setXSpace", it, staffGroup.w, newspace, staffGroup.minspace);
 		if (newspace === null) break;
   }
 	centerWholeRests(staffGroup.voices);
@@ -271,8 +266,7 @@ EngraverController.prototype.notifySelect = function (abselem, tuneNumber, class
   }
   var abcelem = abselem.abcelem || {};
   for (var i=0; i<this.listeners.length;i++) {
-	  if (this.listeners[i].highlight)
-		  this.listeners[i].highlight(abcelem, tuneNumber, classes);
+	  this.listeners[i](abcelem, tuneNumber, classes);
   }
 };
 
@@ -280,12 +274,12 @@ EngraverController.prototype.notifySelect = function (abselem, tuneNumber, class
  * Called by the Abstract Engraving Structure to say it was modified (e.g. notehead dragged)
  * @protected
  */
-EngraverController.prototype.notifyChange = function (/*abselem*/) {
-  for (var i=0; i<this.listeners.length;i++) {
-    if (this.listeners[i].modelChanged)
-      this.listeners[i].modelChanged();
-  }
-};
+// EngraverController.prototype.notifyChange = function (/*abselem*/) {
+//   for (var i=0; i<this.listeners.length;i++) {
+//     if (this.listeners[i].modelChanged)
+//       this.listeners[i].modelChanged();
+//   }
+// };
 
 /**
  *
@@ -303,8 +297,8 @@ EngraverController.prototype.clearSelection = function () {
  * @param {Function} listener.modelChanged the model the listener passed to this controller has changed
  * @param {Function} listener.highlight the abcelem of the model the listener passed to this controller should be highlighted
  */
-EngraverController.prototype.addSelectListener = function (listener) {
-  this.listeners[this.listeners.length] = listener;
+EngraverController.prototype.addSelectListener = function (clickListener) {
+  this.listeners[this.listeners.length] = clickListener;
 };
 
 /**
@@ -343,7 +337,7 @@ function centerWholeRests(voices) {
 		// Look through all of the elements except for the first and last. If the whole note appears there then there isn't anything to center it between anyway.
 		for (var j = 1; j < voice.children.length-1; j++) {
 			var absElem = voice.children[j];
-			if (absElem.abcelem.rest && absElem.abcelem.rest.type === 'whole') {
+			if (absElem.abcelem.rest && (absElem.abcelem.rest.type === 'whole' || absElem.abcelem.rest.type === 'multimeasure')) {
 				var before = voice.children[j-1];
 				var after = voice.children[j+1];
 				var midpoint = (after.x - before.x) / 2 + before.x;

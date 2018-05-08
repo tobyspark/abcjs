@@ -19,11 +19,14 @@ var spacing = require('./abc_spacing');
 // duration - actual musical duration - different from notehead duration in triplets. refer to abcelem to get the notehead duration
 // minspacing - spacing which must be taken on top of the width defined by the duration
 // type is a meta-type for the element. It is not necessary for drawing, but it is useful to make semantic sense of the element. For instance, it can be used in the element's class name.
-var AbsoluteElement = function AbsoluteElement(abcelem, duration, minspacing, type, tuneNumber) {
+var AbsoluteElement = function AbsoluteElement(abcelem, duration, minspacing, type, tuneNumber, options) {
 	//console.log("Absolute:",abcelem, type);
+	if (!options)
+		options = {};
 	this.tuneNumber = tuneNumber;
 	this.abcelem = abcelem;
 	this.duration = duration;
+	this.durationClass = options.durationClassOveride ? options.durationClassOveride : this.duration;
 	this.minspacing = minspacing || 0;
 	this.x = 0;
 	this.children = [];
@@ -68,6 +71,11 @@ AbsoluteElement.prototype.setUpperAndLowerElements = function(specialYResolved) 
 			if (this.specialY.hasOwnProperty(key)) {
 				if (child[key]) { // If this relative element has defined a height for this class of element
 					child.pitch = specialYResolved[key];
+					if (child.top === undefined) { // TODO-PER: HACK! Not sure this is the right place to do this.
+						child.setUpperAndLowerElements(specialYResolved);
+						this.pushTop(child.top);
+						this.pushBottom(child.bottom);
+					}
 				}
 			}
 		}
@@ -165,19 +173,21 @@ AbsoluteElement.prototype.setHint = function () {
 };
 
 AbsoluteElement.prototype.draw = function (renderer, bartop) {
-	this.elemset = renderer.paper.set();
 	if (this.invisible) return;
+	this.elemset = [];
 	renderer.beginGroup();
 	for (var i=0; i<this.children.length; i++) {
 		if (/*ABCJS.write.debugPlacement*/false) {
 			if (this.children[i].klass === 'ornament')
-				renderer.printShadedBox(this.x, renderer.calcY(this.children[i].top), this.w, renderer.calcY(this.children[i].bottom)-renderer.calcY(this.children[i].top), "rgba(0,0,200,0.3)");
+				renderer.printShadedBox(this.x, renderer.calcY(this.children[i].top), this.w, renderer.calcY(this.children[i].bottom)-renderer.calcY(this.children[i].top), "rgb(0,0,200)", 0.3);
 		}
-		this.elemset.push(this.children[i].draw(renderer,bartop));
+		var el = this.children[i].draw(renderer,bartop);
+		if (el)
+			this.elemset.push(el);
 	}
 	var klass = this.type;
-	if (this.type === 'note') {
-		klass += ' d' + this.duration;
+	if (this.type === 'note' || this.type === 'rest') {
+		klass += ' d' + this.durationClass;
 		klass = klass.replace(/\./g, '-');
 		if (this.abcelem.pitches) {
 			for (var j = 0; j < this.abcelem.pitches.length; j++) {
@@ -190,18 +200,17 @@ AbsoluteElement.prototype.draw = function (renderer, bartop) {
 		this.setClass("mark", "", "#00ff00");
 	if (this.hint)
 		this.setClass("abcjs-hint", "", null);
-	var color = /*ABCJS.write.debugPlacement*/false ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0)"; // Create transparent box that encompasses the element, and not so transparent to debug it.
-	var target = renderer.printShadedBox(this.x, renderer.calcY(this.top), this.w, renderer.calcY(this.bottom)-renderer.calcY(this.top), color);
+	var opacity = /*ABCJS.write.debugPlacement*/false ? 0.3 : 0; // Create transparent box that encompasses the element, and not so transparent to debug it.
+	var target = renderer.printShadedBox(this.x, renderer.calcY(this.top), this.w, renderer.calcY(this.bottom)-renderer.calcY(this.top), "#000000", opacity);
 	var self = this;
 	var controller = renderer.controller;
-//	this.elemset.mouseup(function () {
-	target.mouseup(function () {
+	target.addEventListener('mouseup', function () {
 		var classes = [];
 		if (self.elemset) {
 			for (var j = 0; j < self.elemset.length; j++) {
 				var es = self.elemset[j];
-				if (es.attrs && es.attrs.class)
-					classes.push(es.attrs.class);
+				if (es)
+					classes.push(es.getAttribute("class"));
 			}
 		}
 		controller.notifySelect(self, self.tuneNumber, classes);
@@ -209,55 +218,29 @@ AbsoluteElement.prototype.draw = function (renderer, bartop) {
 	this.abcelem.abselem = this;
 
 	var step = spacing.STEP;
-
-	var start = function () {
-			// storing original relative coordinates
-			this.dy = 0;
-		},
-		move = function (dx, dy) {
-			// move will be called with dx and dy
-			dy = Math.round(dy/step)*step;
-			this.translate(0, -this.dy);
-			this.dy = dy;
-			this.translate(0,this.dy);
-		},
-		up = function () {
-			if (self.abcelem.pitches) {
-				var delta = -Math.round(this.dy / step);
-				self.abcelem.pitches[0].pitch += delta;
-				self.abcelem.pitches[0].verticalPos += delta;
-				controller.notifyChange();
-			}
-		};
-	if (this.abcelem.el_type==="note" && controller.editable)
-		this.elemset.drag(move, start, up);
 };
 
 AbsoluteElement.prototype.isIE=/*@cc_on!@*/false;//IE detector
 
 AbsoluteElement.prototype.setClass = function (addClass, removeClass, color) {
-	if (color !== null)
-		this.elemset.attr({fill:color});
-	if (!this.isIE) {
-		for (var i = 0; i < this.elemset.length; i++) {
-			if (this.elemset[i][0].setAttribute) {
-				var kls = this.elemset[i][0].getAttribute("class");
-				if (!kls) kls = "";
-				kls = kls.replace(removeClass, "");
-				kls = kls.replace(addClass, "");
-				if (addClass.length > 0) {
-					if (kls.length > 0 && kls.charAt(kls.length-1) !== ' ') kls += " ";
-					kls += addClass;
-				}
-				this.elemset[i][0].setAttribute("class", kls);
-			}
+	for (var i = 0; i < this.elemset.length; i++) {
+		var el = this.elemset[i];
+		el.setAttribute("fill", color);
+		var kls = el.getAttribute("class");
+		if (!kls) kls = "";
+		kls = kls.replace(removeClass, "");
+		kls = kls.replace(addClass, "");
+		if (addClass.length > 0) {
+			if (kls.length > 0 && kls.charAt(kls.length - 1) !== ' ') kls += " ";
+			kls += addClass;
 		}
+		el.setAttribute("class", kls);
 	}
 };
 
 AbsoluteElement.prototype.highlight = function (klass, color) {
 	if (klass === undefined)
-		klass = "note_selected";
+		klass = "abcjs-note_selected";
 	if (color === undefined)
 		color = "#ff0000";
 	this.setClass(klass, "", color);
@@ -265,7 +248,7 @@ AbsoluteElement.prototype.highlight = function (klass, color) {
 
 AbsoluteElement.prototype.unhighlight = function (klass, color) {
 	if (klass === undefined)
-		klass = "note_selected";
+		klass = "abcjs-note_selected";
 	if (color === undefined)
 		color = "#000000";
 	this.setClass("", klass, color);

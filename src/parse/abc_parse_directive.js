@@ -746,6 +746,7 @@ var parseDirective = {};
 			case "partsbox":
 				scratch = addMultilineVarBool('partsBox', cmd, tokens);
 				if (scratch !== null) return scratch;
+				multilineVars.partsfont.box = multilineVars.partsBox;
 				break;
 			case "measurenb":
 			case "barnumbers":
@@ -993,6 +994,21 @@ var parseDirective = {};
 				switch (cmd) {
 					case "titlefont":
 					case "gchordfont":
+					case "composerfont":
+					case "footerfont":
+					case "headerfont":
+					case "historyfont":
+					case "infofont":
+					case "measurefont":
+					case "partsfont":
+					case "repeatfont":
+					case "subtitlefont":
+					case "tempofont":
+					case "textfont":
+					case "voicefont":
+					case "vocalfont":
+					case "wordsfont":
+					case "annotationfont":
 						getChangingFont(cmd, tokens, value);
 						break;
 					case "scale":
@@ -1001,6 +1017,7 @@ var parseDirective = {};
 					case "partsbox":
 						scratch = addMultilineVarBool('partsBox', cmd, tokens);
 						if (scratch !== null) warn(scratch);
+						multilineVars.partsfont.box = multilineVars.partsBox;
 						break;
 					default:
 						warn("Formatting directive unrecognized: ", cmd, 0);

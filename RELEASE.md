@@ -1,3 +1,171 @@
+# Version 5.0.1
+
+## Bug fixes:
+
+* Comply with the Chrome change to not play audio unless the AudioContext is resumed inside a user interaction.
+
+# Version 5.0.0
+
+## Bug fixes:
+
+* Don't crash animation when there are invisible rests.
+
+* Don't crash when illegal value for scale is passed in.
+
+* Change guitar chord flat and sharp to the right symbols in a few more cases.
+
+* Begin to support mensural time signatures.
+
+## Features
+
+* Remove dependency on Raphael.
+
+# Version 4.1.1
+
+## Bug fixes:
+
+* Fix double transposition of the key signature when transposition is specified in the parameters.
+
+# Version 4.1.0
+
+## Bug fixes:
+
+* When the perc clef is defined in the voice, add the midimap translation to the pitches (this was already being done when perc is in the key sig.)
+
+* Get lines with lots of notes to align properly.
+
+* Do more edge cases with triplets; fix some triplet bugs.
+
+* Double bar lines were messing up the place for the repeat to return to.
+
+* MIDI animation now follows tempo changes.
+
+* Don't get off on the midi animation when encountering a spacer type rest.
+
+* Be sure the div to be written to is empty before engraving.
+
+* When midi is redrawn, stop playing the old midi.
+
+* After calling midi's stopPlaying, reset the inline midi control.
+
+* Fix midi animation when there are no explicit 1st & 2nd ending marks.
+
+* Add fix for getting the Font Awesome 5 icons to show up in audio control; some cosmetic tweaks to large version on audio control.
+
+* Fix click listener in Editor mode.
+
+## Features:
+
+* Allow "style=" parameter on V: line.
+
+* Add a spinner to the audio play button when the soundfonts are loading.
+
+* Allow rhythm slashes to be placed on rests.
+
+* Add feature to transpose a single voice, using "V: ... score=_B"
+
+* Add public function: midi.deviceSupportsMidi()
+
+* Add all the fonts to the directives that can be specified in the renderAbc call.
+
+# Version 4.0.1
+
+## Bug fixes:
+
+* Respect repeats in animation.
+
+* Fix crash when using metronome intro in minified version.
+
+# Version 4.0.0
+
+## Breaking Changes:
+
+* Don't generate classes unless requested. (This is a bug fix, but client code might mistakenly been relying on that behavior.)
+
+* Add "abcjs-" as a prefix to all class names that are generated.
+
+* Change the metronome track to use the Channel 10 sounds.
+
+## Features:
+
+* Simplify the options used to call `renderAbc` and `renderMidi`.
+
+* Add clearer names for `clickListener`, `midiListener`, `midiTranspose`, and `visualTranspose`.
+
+* Implement "partsBox"
+
+* Add a few missing text encodings.
+
+* Handle "%%MIDI transpose" syntax.
+
+* Add a larger version of the audio control.
+
+## Bug fixes:
+
+* Remove a few deprecated options that were broken anyway.
+
+* Move first and second ending lines down a little.
+
+* Put a little more spacing around text that has a box around it.
+
+* Remove some ES6 syntax that snuck in.
+
+* Ignore %%scale formatting command if responsive=resize.
+
+* Remove some debug messages.
+
+* Fix bug with setting only one voice to percussion voice. 
+
+# Version 3.3.4
+
+## Bug fixes:
+
+* Fix build error causing percussion soundfont to be missing.
+
+* Fix lining up multline lyrics when there is a syllable missing on the first line.
+
+## Features:
+
+* Add "rest" class to all rest objects.
+
+* Add multi-measure rests.
+
+# Version 3.3.3
+
+## Bug fixes:
+
+* Fix parsing when "V:" is inline.
+
+* Allow stafflines on the V: line.
+
+* Add "perc" to clefs recognized by V:
+
+* Fix the parsing of the "middle" parameter.
+
+* Fix centering of lyrics.
+
+* Fix midi animation when repeating over more than one line.
+
+* Take pickup notes into consideration for the lead in metronome beats.
+
+## Features:
+
+* Add transpose parameter for engraving.
+
+* Implement "MIDI drummap". 
+
+* Use percussion channel whenever the clef=perc.
+
+* Change default soundfont location to paulrosen github.
+
+* Add percussion channel to the soundfont.
+
+* Change to percussion track when "channel 10" is specified.
+
+* New parameter for download midi link: "downloadClass".
+
+* Pass the startChar and endChar to the MIDI animate callback.
+
 # Version 3.3.2
 
 ## Bug fixes:

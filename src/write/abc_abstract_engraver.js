@@ -55,7 +55,7 @@ AbstractEngraver = function(bagpipes, renderer, tuneNumber) {
 	this.renderer = renderer;
 	this.tuneNumber = tuneNumber;
   this.isBagpipes = bagpipes;
-  this.chartable = {rest:{0:"rests.whole", 1:"rests.half", 2:"rests.quarter", 3:"rests.8th", 4: "rests.16th",5: "rests.32nd", 6: "rests.64th", 7: "rests.128th"},
+  this.chartable = {rest:{0:"rests.whole", 1:"rests.half", 2:"rests.quarter", 3:"rests.8th", 4: "rests.16th",5: "rests.32nd", 6: "rests.64th", 7: "rests.128th", "multi": "rests.multimeasure"},
                  note:{"-1": "noteheads.dbl", 0:"noteheads.whole", 1:"noteheads.half", 2:"noteheads.quarter", 3:"noteheads.quarter", 4:"noteheads.quarter", 5:"noteheads.quarter", 6:"noteheads.quarter", 7:"noteheads.quarter", 'nostem':"noteheads.quarter"},
                  rhythm:{"-1": "noteheads.slash.whole", 0:"noteheads.slash.whole", 1:"noteheads.slash.whole", 2:"noteheads.slash.quarter", 3:"noteheads.slash.quarter", 4:"noteheads.slash.quarter", 5:"noteheads.slash.quarter", 6:"noteheads.slash.quarter", 7:"noteheads.slash.quarter", nostem: "noteheads.slash.nostem"},
                  x:{"-1": "noteheads.indeterminate", 0:"noteheads.indeterminate", 1:"noteheads.indeterminate", 2:"noteheads.indeterminate", 3:"noteheads.indeterminate", 4:"noteheads.indeterminate", 5:"noteheads.indeterminate", 6:"noteheads.indeterminate", 7:"noteheads.indeterminate", nostem: "noteheads.indeterminate"},
@@ -432,15 +432,15 @@ AbstractEngraver.prototype.createNote = function(elem, nostem, dontDraw) { //ste
   for (var tot = Math.pow(2,durlog), inc=tot/2; tot<duration; dot++,tot+=inc,inc/=2);
 
 
-  if (elem.startTriplet) {
-         if (elem.startTriplet === 2)
-         this.tripletmultiplier = 3/2;
-         else
-         this.tripletmultiplier=(elem.startTriplet-1)/elem.startTriplet;
-  }
+	if (elem.startTriplet) {
+		this.tripletmultiplier = elem.tripletMultiplier;
+	}
 
-
-  var abselem = new AbsoluteElement(elem, duration * this.tripletmultiplier, 1, 'note', this.tuneNumber);
+  var durationForSpacing = duration * this.tripletmultiplier;
+  if (elem.rest && elem.rest.type === 'multimeasure')
+  	durationForSpacing = 1;
+  var absType = elem.rest ? "rest" : "note";
+  var abselem = new AbsoluteElement(elem, durationForSpacing, 1, absType, this.tuneNumber, { durationClassOveride: elem.duration * this.tripletmultiplier});
   if (hint) abselem.setHint();
 
   if (elem.rest) {
@@ -469,7 +469,10 @@ AbstractEngraver.prototype.createNote = function(elem, nostem, dontDraw) { //ste
 			dot = 0;
 			break;
     case "rest":
-      c = this.chartable.rest[-durlog];
+	    if (elem.style === "rhythm") // special case for rhythm: rests are a handy way to express the rhythm.
+		    c = this.chartable.rhythm[-durlog];
+	    else
+		    c = this.chartable.rest[-durlog];
       elem.averagepitch=restpitch;
       elem.minpitch=restpitch;
       elem.maxpitch=restpitch;
@@ -480,8 +483,19 @@ AbstractEngraver.prototype.createNote = function(elem, nostem, dontDraw) { //ste
 		elem.averagepitch=restpitch;
 		elem.minpitch=restpitch;
 		elem.maxpitch=restpitch;
+		break;
+	    case "multimeasure":
+	    	c = this.chartable.rest['multi'];
+		    elem.averagepitch=restpitch;
+		    elem.minpitch=restpitch;
+		    elem.maxpitch=restpitch;
+		    dot = 0;
+		    var mmWidth = glyphs.getSymbolWidth(c);
+		    abselem.addHead(new RelativeElement(c, -mmWidth, mmWidth*2, 7 ));
+		    var numMeasures = new RelativeElement(""+elem.duration, 0, mmWidth, 16, {type:"multimeasure-text"});
+		    abselem.addExtra(numMeasures);
     }
-         if (!dontDraw)
+         if (!dontDraw && elem.rest.type !== "multimeasure")
     notehead = this.createNoteHead(abselem, c, {verticalPos:restpitch}, null, 0, -this.roomtaken, null, dot, 0, 1);
     if (notehead) abselem.addHead(notehead);
     this.roomtaken+=this.accidentalshiftx;
@@ -618,9 +632,10 @@ AbstractEngraver.prototype.createNote = function(elem, nostem, dontDraw) { //ste
   if (elem.lyric !== undefined) {
     var lyricStr = "";
          parseCommon.each(elem.lyric, function(ly) {
-         lyricStr += ly.syllable + ly.divider + "\n";
+         	var div = ly.divider === ' ' ? "" : ly.divider;
+         lyricStr += ly.syllable + div + "\n";
       });
-	  var lyricDim = this.renderer.getTextSize(lyricStr, 'vocalfont', "abc-lyric");
+	  var lyricDim = this.renderer.getTextSize(lyricStr, 'vocalfont', "lyric");
 	  var position = elem.positioning ? elem.positioning.vocalPosition : 'below';
     abselem.addCentered(new RelativeElement(lyricStr, 0, lyricDim.width, undefined, {type:"lyric", position: position, height: lyricDim.height / spacing.STEP }));
   }

@@ -2,6 +2,7 @@
 
 var parseCommon = require('./abc_common');
 var parseDirective = require('./abc_parse_directive');
+var transpose = require('./abc_transpose');
 
 var parseKeyVoice = {};
 
@@ -17,7 +18,7 @@ var parseKeyVoice = {};
 		tune = tune_;
 	};
 
-	parseKeyVoice.standardKey = function(keyName) {
+	parseKeyVoice.standardKey = function(keyName, root, acc, localTranspose) {
 		var key1sharp = {acc: 'sharp', note: 'f'};
 		var key2sharp = {acc: 'sharp', note: 'c'};
 		var key3sharp = {acc: 'sharp', note: 'g'};
@@ -164,7 +165,7 @@ var parseKeyVoice = {};
 			'Gbm': [ key1sharp, key2sharp, key3sharp, key4sharp, key5sharp, key6sharp, key7sharp ]
 		};
 
-		return keys[keyName];
+		return transpose.keySignature(multilineVars, keys, keyName, root, acc, localTranspose);
 	};
 
 	var clefLines = {
@@ -294,10 +295,16 @@ var parseKeyVoice = {};
 	};
 
 	var parseMiddle = function(str) {
-	  var mid = pitches[str.charAt(0)];
-		for (var i = 1; i < str.length; i++) {
+		var i = 0;
+		var p = str.charAt(i++);
+		if (p === '^' || p === '_')
+			p = str.charAt(i++);
+	  var mid = pitches[p];
+		if (mid === undefined)
+			mid = 6; // If a legal middle note wasn't received, just ignore it.
+		for ( ; i < str.length; i++) {
 			if (str.charAt(i) === ',') mid -= 7;
-			else if (str.charAt(i) === ',') mid += 7;
+			else if (str.charAt(i) === "'") mid += 7;
 			else break;
 		}
 		return { mid: mid - 6, str: str.substring(i) };	// We get the note in the middle of the staff. We want the note that appears as the first ledger line below the staff.
@@ -401,16 +408,16 @@ var parseKeyVoice = {};
 							}
 						}
 						// Be sure that the key specified is in the list: not all keys are physically possible, like Cbmin.
-						if (parseKeyVoice.standardKey(key) === undefined) {
+						if (parseKeyVoice.standardKey(key, retPitch.token, acc, 0) === undefined) {
 							warn("Unsupported key signature: " + key, str, 0);
 							return ret;
 						}
 					}
 					// We need to do a deep copy because we are going to modify it
 					var oldKey = parseKeyVoice.deepCopyKey(multilineVars.key);
-					multilineVars.key = parseKeyVoice.deepCopyKey({accidentals: parseKeyVoice.standardKey(key)});
-					multilineVars.key.root = retPitch.token;
-					multilineVars.key.acc = acc;
+					//TODO-PER: HACK! To get the local transpose to work, the transposition is done for each line. This caused the global transposition variable to be factored in twice, so, instead of rewriting that right now, I'm just subtracting one of them here.
+					var keyCompensate = multilineVars.globalTranspose ? -multilineVars.globalTranspose : 0;
+					multilineVars.key = parseKeyVoice.deepCopyKey(parseKeyVoice.standardKey(key, retPitch.token, acc, keyCompensate));
 					multilineVars.key.mode = mode;
 					if (oldKey) {
 						// Add natural in all places that the old key had an accidental.
@@ -456,10 +463,19 @@ var parseKeyVoice = {};
 				for (var j = 0; j < multilineVars.key.accidentals.length && !found; j++) {
 					if (multilineVars.key.accidentals[j].note === accs.accs[i].note) {
 						found = true;
-						multilineVars.key.accidentals[j].acc = accs.accs[i].acc;
+						if (multilineVars.key.accidentals[j].acc !== accs.accs[i].acc) {
+							// If the accidental is different, then replace it. If it is the same, then the declaration was redundant, so just ignore it.
+							multilineVars.key.accidentals[j].acc = accs.accs[i].acc;
+							if (!multilineVars.key.explicitAccidentals)
+								multilineVars.key.explicitAccidentals = [];
+							multilineVars.key.explicitAccidentals.push(accs.accs[i]);
+						}
 					}
 				}
 				if (!found) {
+					if (!multilineVars.key.explicitAccidentals)
+						multilineVars.key.explicitAccidentals = [];
+					multilineVars.key.explicitAccidentals.push(accs.accs[i]);
 					multilineVars.key.accidentals.push(accs.accs[i]);
 					if (multilineVars.key.impliedNaturals) {
 						for (var kkk = 0; kkk < multilineVars.key.impliedNaturals.length; kkk++) {
@@ -643,6 +659,27 @@ var parseKeyVoice = {};
 			}
 			start += attr.len;
 		};
+		var addNextNoteTokenToVoiceInfo = function(id, name) {
+			var noteToTransposition = {
+				"_B": 2,
+				"_E": 9,
+				"_b": -10,
+				"_e": -3
+			};
+			var attr = tokenizer.getVoiceToken(line, start, end);
+			if (attr.warn !== undefined)
+				warn("Expected one of (_B, _E, _b, _e) for " + name + " in voice: " + attr.warn, line, start);
+			else if (attr.token.length === 0 && line.charAt(start) !== '"')
+				warn("Expected one of (_B, _E, _b, _e) for " + name + " in voice", line, start);
+			else {
+				var t = noteToTransposition[attr.token];
+				if (!t)
+					warn("Expected one of (_B, _E, _b, _e) for " + name + " in voice", line, start);
+				else
+					multilineVars.voices[id][name] = t;
+			}
+			start += attr.len;
+		};
 
 		//Then the following items can occur in any order:
 		while (start < end) {
@@ -706,6 +743,7 @@ var parseKeyVoice = {};
 	//							}
 											  staffInfo.clef = token.token.replace(/[',]/g, ""); //'//comment for emacs formatting of regexp
 						staffInfo.verticalPos = calcMiddle(staffInfo.clef, oct2);
+						multilineVars.voices[id].clef = token.token;
 						break;
 					case 'staves':
 					case 'stave':
@@ -767,6 +805,9 @@ var parseKeyVoice = {};
 					case 'scale':
 						addNextTokenToVoiceInfo(id, 'scale', 'number');
 						break;
+					case 'score':
+						addNextNoteTokenToVoiceInfo(id, 'scoreTranspose');
+						break;
 					case 'transpose':
 						addNextTokenToVoiceInfo(id, 'transpose', 'number');
 						break;
@@ -784,6 +825,16 @@ var parseKeyVoice = {};
 					case 'volume':
 						// TODO-PER: This is accepted, but not implemented, yet.
 						addNextTokenToVoiceInfo(id, 'volume', 'number');
+						break;
+					case "style":
+						attr = tokenizer.getVoiceToken(line, start, end);
+						if (attr.warn !== undefined)
+							warn("Expected value for style in voice: " + attr.warn, line, start);
+						else if (attr.token === 'normal' || attr.token === 'harmonic' || attr.token === 'rhythm' || attr.token === 'x')
+							multilineVars.voices[id].style = attr.token;
+						else
+							warn("Expected one of [normal, harmonic, rhythm, x] for voice style", line, start);
+						start += attr.len;
 						break;
 					// default:
 					// Use this to find V: usages that aren't handled.
