@@ -56,7 +56,7 @@ var midi = {};
 	midi.generateMidiDownloadLink = function(tune, midiParams, midi, index) {
 		var divClasses = ['abcjs-download-midi', 'abcjs-midi-' + index]
 		if (midiParams.downloadClass)
-			divClasses.push(midiParams.downloadClass)
+			divClasses = divClasses.concat(midiParams.downloadClass)
 		var html = '<div class="' + divClasses.join(' ') + '">';
 		if (midiParams.preTextDownload)
 			html += midiParams.preTextDownload;
