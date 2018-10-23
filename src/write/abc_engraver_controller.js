@@ -15,7 +15,7 @@
 //    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-/*global window, Math, Raphael */
+/*global Math */
 
 var spacing = require('./abc_spacing');
 var AbstractEngraver = require('./abc_abstract_engraver');
@@ -103,32 +103,79 @@ EngraverController.prototype.adjustNonScaledItems = function (scale) {
 	this.renderer.adjustNonScaledItems(scale);
 };
 
+EngraverController.prototype.getMeasureWidths = function(abcTune) {
+	this.reset();
+
+	this.renderer.lineNumber = null;
+
+	this.renderer.newTune(abcTune);
+	this.engraver = new AbstractEngraver(abcTune.formatting.bagpipes,this.renderer, 0);
+	this.engraver.setStemHeight(this.renderer.spacing.stemHeight);
+	if (abcTune.formatting.staffwidth) {
+		this.width = abcTune.formatting.staffwidth * 1.33; // The width is expressed in pt; convert to px.
+	} else {
+		this.width = this.renderer.isPrint ? this.staffwidthPrint : this.staffwidthScreen;
+	}
+
+	var scale = abcTune.formatting.scale ? abcTune.formatting.scale : this.scale;
+	if (this.responsive === "resize") // The resizing will mess with the scaling, so just don't do it explicitly.
+		scale = undefined;
+	if (scale === undefined) scale = this.renderer.isPrint ? 0.75 : 1;
+	this.adjustNonScaledItems(scale);
+
+	var ret = { left: 0, measureWidths: [] };
+	var debug = false;
+	var hasPrintedTempo = false;
+	for(var i=0; i<abcTune.lines.length; i++) {
+		var abcLine = abcTune.lines[i];
+		if (abcLine.staff) {
+			abcLine.staffGroup = this.engraver.createABCLine(abcLine.staff, !hasPrintedTempo ? abcTune.metaText.tempo: null);
+
+			abcLine.staffGroup.layout(0, this.renderer, debug);
+			// At this point, the voices are laid out so that the bar lines are even with each other. So we just need to get the placement of the first voice.
+			if (abcLine.staffGroup.voices.length > 0) {
+				var voice = abcLine.staffGroup.voices[0];
+				var foundNotStaffExtra = false;
+				var lastXPosition = 0;
+				for (var k = 0; k < voice.children.length; k++) {
+					var child = voice.children[k];
+					if (!foundNotStaffExtra && !child.isClef && !child.isKeySig) {
+						foundNotStaffExtra = true;
+						ret.left = child.x;
+						lastXPosition = child.x;
+					}
+					if (child.type === 'bar') {
+						ret.measureWidths.push(child.x - lastXPosition);
+						lastXPosition = child.x;
+					}
+				}
+			}
+			hasPrintedTempo = true;
+		}
+	}
+	return ret;
+};
+
 /**
  * Run the engraving process on a single tune
  * @param {ABCJS.Tune} abctune
  */
 EngraverController.prototype.engraveTune = function (abctune, tuneNumber) {
 	this.renderer.lineNumber = null;
-	abctune.formatting.tripletfont = {face: "Times", size: 11, weight: "normal", style: "italic", decoration: "none"}; // TODO-PER: This font isn't defined in the standard, so it's hardcoded here for now.
 
-	this.renderer.abctune = abctune; // TODO-PER: this is just to get the font info.
-	this.renderer.setVerticalSpace(abctune.formatting);
-	this.renderer.measureNumber = null;
-	this.renderer.noteNumber = null;
-	this.renderer.setPrintMode(abctune.media === 'print');
-	var scale = abctune.formatting.scale ? abctune.formatting.scale : this.scale;
-	if (this.responsive === "resize") // The resizing will mess with the scaling, so just don't do it explicitly.
-		scale = undefined;
-	if (scale === undefined) scale = this.renderer.isPrint ? 0.75 : 1;
-	this.renderer.setPadding(abctune);
+	this.renderer.newTune(abctune);
 	this.engraver = new AbstractEngraver(abctune.formatting.bagpipes,this.renderer, tuneNumber);
 	this.engraver.setStemHeight(this.renderer.spacing.stemHeight);
-	this.renderer.engraver = this.engraver; //TODO-PER: do we need this coupling? It's just used for the tempo
 	if (abctune.formatting.staffwidth) {
 		this.width = abctune.formatting.staffwidth * 1.33; // The width is expressed in pt; convert to px.
 	} else {
 		this.width = this.renderer.isPrint ? this.staffwidthPrint : this.staffwidthScreen;
 	}
+
+	var scale = abctune.formatting.scale ? abctune.formatting.scale : this.scale;
+	if (this.responsive === "resize") // The resizing will mess with the scaling, so just don't do it explicitly.
+		scale = undefined;
+	if (scale === undefined) scale = this.renderer.isPrint ? 0.75 : 1;
 	this.adjustNonScaledItems(scale);
 
 	// Generate the raw staff line data
@@ -223,11 +270,10 @@ function calcHorizontalSpacing(isLastLine, stretchLast, targetWidth, lineWidth, 
  */
 EngraverController.prototype.setXSpacing = function (staffGroup, formatting, isLastLine, debug) {
    var newspace = this.space;
-   //var debug = true;
   for (var it = 0; it < 8; it++) { // TODO-PER: shouldn't need multiple passes, but each pass gets it closer to the right spacing. (Only affects long lines: normal lines break out of this loop quickly.)
-	  staffGroup.layout(newspace, this.renderer, debug);
+	  var ret = staffGroup.layout(newspace, this.renderer, debug);
 	  var stretchLast = formatting.stretchlast ? formatting.stretchlast : false;
-		newspace = calcHorizontalSpacing(isLastLine, stretchLast, this.width+this.renderer.padding.left, staffGroup.w, newspace, staffGroup.spacingunits, staffGroup.minspace);
+		newspace = calcHorizontalSpacing(isLastLine, stretchLast, this.width+this.renderer.padding.left, staffGroup.w, newspace, ret.spacingUnits, ret.minSpace);
 		if (debug)
 			console.log("setXSpace", it, staffGroup.w, newspace, staffGroup.minspace);
 		if (newspace === null) break;

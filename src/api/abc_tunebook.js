@@ -44,7 +44,7 @@ var tunebook = {};
 		This.tunes = [];
 		parseCommon.each(tunes, function(tune) {
 			This.tunes.push({ abc: tune, startPos: pos});
-			pos += tune.length;
+			pos += tune.length + 1; // We also lost a newline when splitting, so count that.
 		});
 		if (This.tunes.length > 1 && !parseCommon.startsWith(This.tunes[0].abc, 'X:')) {	// If there is only one tune, the X: might be missing, otherwise assume the top of the file is "intertune"
 			// There could be file-wide directives in this, if so, we need to insert it into each tune. We can probably get away with
@@ -140,10 +140,12 @@ var tunebook = {};
 				if (currentTune >= 0 && currentTune < book.tunes.length) {
 					abcParser.parse(book.tunes[currentTune].abc, params);
 					var tune = abcParser.getTune();
-					ret.push(tune);
-					callback(div, tune, i);
-				} else
-					div.innerHTML = "";
+					var override = callback(div, tune, i, book.tunes[currentTune].abc);
+					ret.push(override ? override : tune);
+				} else {
+					if (div.hasOwnProperty('innerHTML'))
+						div.innerHTML = "";
+				}
 			}
 			currentTune++;
 		}

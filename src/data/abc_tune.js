@@ -108,14 +108,33 @@ var Tune = function() {
 	};
 
 	this.getBarLength = function() {
-		var meter = this.getMeter();
-		var measureLength;
-		switch(meter.type) {
-			case "common_time": measureLength = 1; this.meter = { num: 4, den: 4}; break;
-			case "cut_time": measureLength = 1; this.meter = { num: 2, den: 2}; break;
-			default: measureLength = meter.value[0].num/meter.value[0].den; this.meter = { num: parseInt(meter.value[0].num, 10), den: parseInt(meter.value[0].den,10)};
+		var meter = this.getMeterFraction();
+		return meter.num / meter.den;
+	};
+
+	this.millisecondsPerMeasure = function(bpmOverride) {
+		var bpm;
+		if (bpmOverride) {
+			bpm = bpmOverride;
+		} else {
+			var tempo = this.metaText ? this.metaText.tempo : null;
+			bpm = this.getBpm(tempo);
 		}
-		return measureLength;
+		if (bpm <= 0)
+			bpm = 1; // I don't think this can happen, but we don't want a possibility of dividing by zero.
+
+		var beatsPerMeasure;
+		var meter = this.getMeterFraction();
+		if (meter.den === 8) {
+			beatsPerMeasure = meter.num / 3;
+		} else {
+			beatsPerMeasure = meter.num;
+		}
+		if (beatsPerMeasure <= 0) // This probably won't happen in any normal case - but it is possible that the meter could be set to something nonsensical.
+			beatsPerMeasure = 1;
+
+		var minutesPerMeasure = beatsPerMeasure / bpm;
+		return minutesPerMeasure * 60000;
 	};
 
 	this.reset = function () {
@@ -130,6 +149,7 @@ var Tune = function() {
 	};
 
 	this.resolveOverlays = function() {
+		var madeChanges = false;
 		for (var i = 0; i < this.lines.length; i++) {
 			var line = this.lines[i];
 			if (line.staff) {
@@ -144,7 +164,8 @@ var Tune = function() {
 						var snipStart = -1;
 						for (var kk = 0; kk < voice.length; kk++) {
 							var event = voice[kk];
-							if (event.el_type === "overlay") {
+							if (event.el_type === "overlay" && !inOverlay) {
+								madeChanges = true;
 								inOverlay = true;
 								snipStart = kk;
 								overlayVoice[k].hasOverlay = true;
@@ -153,6 +174,7 @@ var Tune = function() {
 									// delete the overlay events from this array without messing up this loop.
 									inOverlay = false;
 									overlayVoice[k].snip.push({ start: snipStart, len: kk - snipStart});
+									overlayVoice[k].voice.push(event); // Also end the overlay with the barline.
 								} else {
 									overlayVoice[k].voice.push({ el_type: "note", duration: durationThisBar, rest: {type: "invisible"}, startChar: event.startChar, endChar: event.endChar });
 									overlayVoice[k].voice.push(event);
@@ -164,10 +186,14 @@ var Tune = function() {
 								} else {
 									durationThisBar += event.duration;
 								}
-							} else if (event.el_type === "scale" || event.el_type === "stem" || event.el_type === "style" || event.el_type === "transpose") {
+							} else if (event.el_type === "scale" || event.el_type === "stem" || event.el_type === "overlay" || event.el_type === "style" || event.el_type === "transpose") {
 								// These types of events are duplicated on the overlay layer.
 								overlayVoice[k].voice.push(event);
 							}
+						}
+						if (overlayVoice[k].hasOverlay && overlayVoice[k].snip.length === 0) {
+							// there was no closing bar, so we didn't set the snip amount.
+							overlayVoice[k].snip.push({ start: snipStart, len: voice.length - snipStart});
 						}
 					}
 					for (k = 0; k < overlayVoice.length; k++) {
@@ -183,7 +209,34 @@ var Tune = function() {
 				}
 			}
 		}
+		return madeChanges;
 	};
+
+	function fixTitles(lines) {
+		// We might have name and subname defined. We now know what line everything is on, so we can determine which to use.
+		var firstMusicLine = true;
+		for (var i = 0; i < lines.length; i++) {
+			var line = lines[i];
+			if (line.staff) {
+				for (var j = 0; j < line.staff.length; j++) {
+					var staff = line.staff[j];
+					if (staff.title) {
+						var hasATitle = false;
+						for (var k = 0; k < staff.title.length; k++) {
+							staff.title[k] = (firstMusicLine) ? staff.title[k].name : staff.title[k].subname;
+							if (staff.title[k])
+								hasATitle = true;
+							else
+								staff.title[k] = '';
+						}
+						if (!hasATitle)
+							delete staff.title;
+					}
+				}
+				firstMusicLine = false;
+			}
+		}
+	}
 
 	this.cleanUp = function(defWidth, defLength, barsperstaff, staffnonote, currSlur) {
 		this.closeLine();	// Close the last line.
@@ -228,47 +281,13 @@ var Tune = function() {
 
 		// if we exceeded the number of bars allowed on a line, then force a new line
 		if (barsperstaff) {
-			for (i = 0; i < this.lines.length; i++) {
-				if (this.lines[i].staff !== undefined) {
-					for (s = 0; s < this.lines[i].staff.length; s++) {
-						var permanentItems = [];
-						for (v = 0; v < this.lines[i].staff[s].voices.length; v++) {
-							var voice = this.lines[i].staff[s].voices[v];
-							var barNumThisLine = 0;
-							for (var n = 0; n < voice.length; n++) {
-								if (voice[n].el_type === 'bar') {
-									barNumThisLine++;
-									if (barNumThisLine >= barsperstaff) {
-										// push everything else to the next line, if there is anything else,
-										// and there is a next line. If there isn't a next line, create one.
-										if (n < voice.length - 1) {
-											if (i === this.lines.length - 1) {
-												var cp = JSON.parse(JSON.stringify(this.lines[i]));
-												this.lines.push(parseCommon.clone(cp));
-												for (var ss = 0; ss < this.lines[i+1].staff.length; ss++) {
-													for (var vv = 0; vv < this.lines[i+1].staff[ss].voices.length; vv++)
-														this.lines[i+1].staff[ss].voices[vv] = [];
-												}
-											}
-											var startElement = n + 1;
-											var section = this.lines[i].staff[s].voices[v].slice(startElement);
-											this.lines[i].staff[s].voices[v] = this.lines[i].staff[s].voices[v].slice(0, startElement);
-											this.lines[i+1].staff[s].voices[v] = permanentItems.concat(section.concat(this.lines[i+1].staff[s].voices[v]));
-										}
-									}
-								} else if (!voice[n].duration) {
-									permanentItems.push(voice[n]);
-								}
-							}
-
-						}
-					}
-				}
+			while (wrapMusicLines(this.lines, barsperstaff)) {
+				// This will keep wrapping until the end of the piece.
 			}
 		}
 
 		// If we were passed staffnonote, then we want to get rid of all staffs that contain only rests.
-		if (barsperstaff) {
+		if (staffnonote) {
 			anyDeleted = false;
 			for (i = 0; i < this.lines.length; i++) {
 				if (this.lines[i].staff !== undefined) {
@@ -294,6 +313,8 @@ var Tune = function() {
 			}
 		}
 
+		fixTitles(this.lines);
+
 		// Remove the temporary working variables
 		for (i = 0; i < this.lines.length; i++) {
 			if (this.lines[i].staff) {
@@ -303,7 +324,9 @@ var Tune = function() {
 		}
 
 		// If there are overlays, create new voices for them.
-		this.resolveOverlays();
+		while (this.resolveOverlays()) {
+			// keep resolving overlays as long as any are found.
+		}
 
 		function cleanUpSlursInLine(line) {
 			var x;
@@ -464,6 +487,49 @@ var Tune = function() {
 //						el.verticalPos -= 7;
 //				}
 			//}
+		}
+
+		function wrapMusicLines(lines, barsperstaff) {
+			for (i = 0; i < lines.length; i++) {
+				if (lines[i].staff !== undefined) {
+					for (s = 0; s < lines[i].staff.length; s++) {
+						var permanentItems = [];
+						for (v = 0; v < lines[i].staff[s].voices.length; v++) {
+							var voice = lines[i].staff[s].voices[v];
+							var barNumThisLine = 0;
+							for (var n = 0; n < voice.length; n++) {
+								if (voice[n].el_type === 'bar') {
+									barNumThisLine++;
+									if (barNumThisLine >= barsperstaff) {
+										// push everything else to the next line, if there is anything else,
+										// and there is a next line. If there isn't a next line, create one.
+										if (n < voice.length - 1) {
+											var nextLine = getNextMusicLine(lines, i);
+											if (!nextLine) {
+												var cp = JSON.parse(JSON.stringify(lines[i]));
+												lines.push(parseCommon.clone(cp));
+												nextLine = lines[lines.length - 1];
+												for (var ss = 0; ss < nextLine.staff.length; ss++) {
+													for (var vv = 0; vv < nextLine.staff[ss].voices.length; vv++)
+														nextLine.staff[ss].voices[vv] = [];
+												}
+											}
+											var startElement = n + 1;
+											var section = lines[i].staff[s].voices[v].slice(startElement);
+											lines[i].staff[s].voices[v] = lines[i].staff[s].voices[v].slice(0, startElement);
+											nextLine.staff[s].voices[v] = permanentItems.concat(section.concat(nextLine.staff[s].voices[v]));
+											return true;
+										}
+									}
+								} else if (!voice[n].duration) {
+									permanentItems.push(voice[n]);
+								}
+							}
+						}
+					}
+				}
+			}
+			return false;
 		}
 
 		function getNextMusicLine(lines, currentLine) {
@@ -651,12 +717,6 @@ var Tune = function() {
 		var hashParams = parseCommon.clone(hashParams2);
 
 		if (this.lines[this.lineNum].staff) { // be sure that we are on a music type line before doing the following.
-			// If this is a clef type, then we replace the working clef on the line. This is kept separate from
-			// the clef in case there is an inline clef field. We need to know what the current position for
-			// the note is.
-			if (type === 'clef')
-				this.lines[this.lineNum].staff[this.staffNum].workingClef = hashParams;
-
 			// If this is the first item in this staff, then we might have to initialize the staff, first.
 			if (this.lines[this.lineNum].staff.length <= this.staffNum) {
 				this.lines[this.lineNum].staff[this.staffNum] = {};
@@ -666,6 +726,12 @@ var Tune = function() {
 					this.lines[this.lineNum].staff[this.staffNum].meter = parseCommon.clone(this.lines[this.lineNum].staff[0].meter);
 				this.lines[this.lineNum].staff[this.staffNum].workingClef = parseCommon.clone(this.lines[this.lineNum].staff[0].workingClef);
 				this.lines[this.lineNum].staff[this.staffNum].voices = [[]];
+			}
+			// If this is a clef type, then we replace the working clef on the line. This is kept separate from
+			// the clef in case there is an inline clef field. We need to know what the current position for
+			// the note is.
+			if (type === 'clef') {
+				this.lines[this.lineNum].staff[this.staffNum].workingClef = hashParams;
 			}
 
 			// These elements should not be added twice, so if the element exists on this line without a note or bar before it, just replace the staff version.
@@ -761,26 +827,25 @@ var Tune = function() {
 		var This = this;
 		this.closeLine();	// Close the previous line.
 		var createVoice = function(params) {
-			This.lines[This.lineNum].staff[This.staffNum].voices[This.voiceNum] = [];
-			if (This.isFirstLine(This.lineNum)) {
-				if (params.name) {if (!This.lines[This.lineNum].staff[This.staffNum].title) This.lines[This.lineNum].staff[This.staffNum].title = [];This.lines[This.lineNum].staff[This.staffNum].title[This.voiceNum] = params.name;}
-			} else {
-				if (params.subname) {if (!This.lines[This.lineNum].staff[This.staffNum].title) This.lines[This.lineNum].staff[This.staffNum].title = [];This.lines[This.lineNum].staff[This.staffNum].title[This.voiceNum] = params.subname;}
-			}
+			var thisStaff = This.lines[This.lineNum].staff[This.staffNum];
+			thisStaff.voices[This.voiceNum] = [];
+			if (!thisStaff.title)
+				thisStaff.title = [];
+			thisStaff.title[This.voiceNum] = { name: params.name, subname: params.subname };
 			if (params.style)
 				This.appendElement('style', null, null, {head: params.style});
 			if (params.stem)
 				This.appendElement('stem', null, null, {direction: params.stem});
 			else if (This.voiceNum > 0) {
-				if (This.lines[This.lineNum].staff[This.staffNum].voices[0]!== undefined) {
+				if (thisStaff.voices[0]!== undefined) {
 					var found = false;
-					for (var i = 0; i < This.lines[This.lineNum].staff[This.staffNum].voices[0].length; i++) {
-						if (This.lines[This.lineNum].staff[This.staffNum].voices[0].el_type === 'stem')
+					for (var i = 0; i < thisStaff.voices[0].length; i++) {
+						if (thisStaff.voices[0].el_type === 'stem')
 							found = true;
 					}
 					if (!found) {
 						var stem = { el_type: 'stem', direction: 'up' };
-						This.lines[This.lineNum].staff[This.staffNum].voices[0].splice(0,0,stem);
+						thisStaff.voices[0].splice(0,0,stem);
 					}
 				}
 				This.appendElement('stem', null, null, {direction: 'down'});
@@ -802,6 +867,7 @@ var Tune = function() {
 			if (params.staffscale) {
 				This.lines[This.lineNum].staff[This.staffNum].staffscale = params.staffscale;
 			}
+			if (params.tripletfont) This.lines[This.lineNum].staff[This.staffNum].tripletfont = params.tripletfont;
 			if (params.vocalfont) This.lines[This.lineNum].staff[This.staffNum].vocalfont = params.vocalfont;
 			if (params.bracket) This.lines[This.lineNum].staff[This.staffNum].bracket = params.bracket;
 			if (params.brace) This.lines[This.lineNum].staff[This.staffNum].brace = params.brace;
@@ -859,6 +925,26 @@ var Tune = function() {
 			}
 		}
 		return { type: "common_time", };
+	};
+
+	this.getMeterFraction = function() {
+		var meter = this.getMeter();
+		var num = 4;
+		var den = 4;
+		if (meter) {
+			if (meter.type === 'specified') {
+				num = parseInt(meter.value[0].num, 10);
+				den = parseInt(meter.value[0].den,10);
+			} else if (meter.type === 'cut_time') {
+				num = 2;
+				den = 2;
+			} else if (meter.type === 'common_time') {
+				num = 4;
+				den = 4;
+			}
+		}
+		this.meter = { num: num, den: den };
+		return this.meter; // TODO-PER: is this saved value used anywhere? A get function shouldn't change state.
 	};
 
 	this.getCurrentVoice = function() {
@@ -941,7 +1027,7 @@ var Tune = function() {
 		return arr;
 	}
 
-	this.addElementToEvents = function(eventHash, element, voiceTimeMilliseconds, top, height, timeDivider, isTiedState) {
+	this.addElementToEvents = function(eventHash, element, voiceTimeMilliseconds, top, height, line, measureNumber, timeDivider, isTiedState, nextIsBar) {
 		if (element.hint)
 			return { isTiedState: undefined, duration: 0 };
 		var realDuration = element.durationClass ? element.durationClass : element.duration;
@@ -957,32 +1043,70 @@ var Tune = function() {
 			var isTiedToNext = element.startTie;
 			if (isTiedState !== undefined) {
 				eventHash["event" + isTiedState].elements.push(es); // Add the tied note to the first note that it is tied to
+				if (nextIsBar) {
+					if (!eventHash["event" + voiceTimeMilliseconds]) {
+						eventHash["event" + voiceTimeMilliseconds] = {
+							type: "event",
+							milliseconds: voiceTimeMilliseconds,
+							line: line,
+							measureNumber: measureNumber,
+							top: top,
+							height: height,
+							left: null,
+							width: 0,
+							elements: [],
+							startChar: null,
+							endChar: null,
+							startCharArray: [],
+							endCharArray: []
+						};
+					}
+					eventHash["event" + voiceTimeMilliseconds].measureStart = true;
+					nextIsBar = false;
+				}
 				if (!isTiedToNext)
 					isTiedState = undefined;
 			} else {
 				// the last note wasn't tied.
-				if (!eventHash["event" + voiceTimeMilliseconds])
+				if (!eventHash["event" + voiceTimeMilliseconds]) {
 					eventHash["event" + voiceTimeMilliseconds] = {
 						type: "event",
 						milliseconds: voiceTimeMilliseconds,
+						line: line,
+						measureNumber: measureNumber,
 						top: top,
 						height: height,
 						left: element.x,
 						width: element.w,
 						elements: [es],
 						startChar: element.abcelem.startChar,
-						endChar: element.abcelem.endChar
+						endChar: element.abcelem.endChar,
+						startCharArray: [element.abcelem.startChar],
+						endCharArray: [element.abcelem.endChar]
 					};
-				else {
+				} else {
 					// If there is more than one voice then two notes can fall at the same time. Usually they would be lined up in the same place, but if it is a whole rest, then it is placed funny. In any case, the left most element wins.
-					eventHash["event" + voiceTimeMilliseconds].left = Math.min(eventHash["event" + voiceTimeMilliseconds].left, element.x);
+					if (eventHash["event" + voiceTimeMilliseconds].left)
+						eventHash["event" + voiceTimeMilliseconds].left = Math.min(eventHash["event" + voiceTimeMilliseconds].left, element.x);
+					else
+						eventHash["event" + voiceTimeMilliseconds].left = element.x;
 					eventHash["event" + voiceTimeMilliseconds].elements.push(es);
+					eventHash["event" + voiceTimeMilliseconds].startCharArray.push(element.abcelem.startChar);
+					eventHash["event" + voiceTimeMilliseconds].endCharArray.push(element.abcelem.endChar);
+					if (eventHash["event" + voiceTimeMilliseconds].startChar === null)
+						eventHash["event" + voiceTimeMilliseconds].startChar =element.abcelem.startChar;
+					if (eventHash["event" + voiceTimeMilliseconds].endChar === null)
+						eventHash["event" + voiceTimeMilliseconds].endChar =element.abcelem.endChar;
+				}
+				if (nextIsBar) {
+					eventHash["event" + voiceTimeMilliseconds].measureStart = true;
+					nextIsBar = false;
 				}
 				if (isTiedToNext)
 					isTiedState = voiceTimeMilliseconds;
 			}
 		}
-		return { isTiedState: isTiedState, duration: realDuration / timeDivider };
+		return { isTiedState: isTiedState, duration: realDuration / timeDivider, nextIsBar: nextIsBar || element.type === 'bar' };
 	};
 
 	this.makeVoicesArray = function() {
@@ -1000,11 +1124,17 @@ var Tune = function() {
 
 			var voices = group.voices;
 			for (var v = 0; v < voices.length; v++) {
+				var measureNumber = 0;
+				var noteFound = false;
 				if (!voicesArr[v])
 					voicesArr[v] = [];
 				var elements = voices[v].children;
 				for (var elem = 0; elem < elements.length; elem++) {
-					voicesArr[v].push({top: top, height: height, elem: elements[elem]});
+					voicesArr[v].push({top: top, height: height, line: line, measureNumber: measureNumber, elem: elements[elem]});
+					if (elements[elem].type === 'bar' && noteFound) // Count the measures by counting the bar lines, but skip a bar line that appears at the left of the music, before any notes.
+						measureNumber++;
+					if (elements[elem].type === 'note')
+						noteFound = true;
 				}
 			}
 		}
@@ -1019,6 +1149,7 @@ var Tune = function() {
 		// The units we are scanning are in notation units (i.e. 0.25 is a quarter note)
 		var time = startingDelay;
 		var isTiedState;
+		var nextIsBar = true;
 		var voices = this.makeVoicesArray();
 		for (var v = 0; v < voices.length; v++) {
 			var voiceTime = time;
@@ -1034,8 +1165,9 @@ var Tune = function() {
 					var beatsPerSecond = bpm / 60;
 					timeDivider = beatLength * beatsPerSecond;
 				}
-				var ret = this.addElementToEvents(eventHash, element, voiceTimeMilliseconds, elements[elem].top, elements[elem].height, timeDivider, isTiedState);
+				var ret = this.addElementToEvents(eventHash, element, voiceTimeMilliseconds, elements[elem].top, elements[elem].height, elements[elem].line, elements[elem].measureNumber, timeDivider, isTiedState, nextIsBar);
 				isTiedState = ret.isTiedState;
+				nextIsBar = ret.nextIsBar;
 				voiceTime += ret.duration;
 				voiceTimeMilliseconds = Math.round(voiceTime * 1000);
 				if (element.type === 'bar') {
@@ -1047,12 +1179,14 @@ var Tune = function() {
 						if (endingRepeatElem === -1)
 							endingRepeatElem = elem;
 						for (var el2 = startingRepeatElem; el2 < endingRepeatElem; el2++) {
-							element = elements[el2].elem;
-							ret = this.addElementToEvents(eventHash, element, voiceTimeMilliseconds, elements[elem].top, elements[elem].height, timeDivider, isTiedState);
+							var element2 = elements[el2].elem;
+							ret = this.addElementToEvents(eventHash, element2, voiceTimeMilliseconds, elements[el2].top, elements[el2].height, elements[el2].line, elements[el2].measureNumber, timeDivider, isTiedState, nextIsBar);
 							isTiedState = ret.isTiedState;
+							nextIsBar = ret.nextIsBar;
 							voiceTime += ret.duration;
 							voiceTimeMilliseconds = Math.round(voiceTime * 1000);
 						}
+						nextIsBar = true;
 						endingRepeatElem = -1;
 					}
 					if (startEnding)
@@ -1088,16 +1222,22 @@ var Tune = function() {
 			var statedBeatLength = tempo.duration && tempo.duration.length > 0 ? tempo.duration[0] : beatLength;
 			bpm = bpm * statedBeatLength / beatLength;
 		}
-		if (!bpm)
+		if (!bpm) {
 			bpm = 180;
-
+			// Compensate for compound meter, where the beat isn't a beat.
+			var meter = this.getMeterFraction();
+			if (meter && meter.den === 8) {
+				bpm = 120;
+			}
+		}
 		return bpm;
 	};
 
 	this.setTiming = function (bpm, measuresOfDelay) {
-		var tempo = this.metaText ? this.metaText.tempo : null;
-		if (!bpm)
+		if (!bpm) {
+			var tempo = this.metaText ? this.metaText.tempo : null;
 			bpm = this.getBpm(tempo);
+		}
 
 		var beatLength = this.getBeatLength();
 		var beatsPerSecond = bpm / 60;

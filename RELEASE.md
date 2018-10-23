@@ -1,14 +1,122 @@
+# Version 5.3.5
+
+## Features:
+
+* Always send start of measure event on TimingCallbacks, even if the measure starts with a tie.
+
+* Support ^8 and _8 for clefs.
+
+# Version 5.3.4
+
+## Bug fixes:
+
+* Fix crash when doing multi-stave music in wrap mode.
+
+# Version 5.3.3
+
+## Bug fixes:
+
+* Fix test for shrinking the only line when wrapping.
+
+# Version 5.3.2
+
+## Bug fixes:
+
+* Test all options in the `wrap` parameter for legal values.
+
+* Ignore the explicit line breaks when using `wrap`.
+
+* Get the amount of spacing more even on each line when using `wrap`.
+
+# Version 5.3.1
+
+## Bug fixes:
+
+* Don't require passing `scale` as a parameter to get the `wrap` parameter to work.
+
+# Version 5.3.0
+
+## Features
+
+* Add parameter `wrap: { minSpacing, onlyLineLimit, lastLineLimit }` and automatically calc num measures for each line.
+
+* When animating, return an array of start and end chars if there is more than one voice.
+
+* Add line and measure info into the TimingCallbacks for the convenience of the clients.
+
+* Don't require qpm to be passed to TimingCallbacks: look for a qpm in the music.
+
+* In TimingCallbacks, add a callback when it is near the end of a line.
+
+* Add `replaceTarget()` to the timing callback so that re-engraving can happen when the cursor is running.
+
+* Include the original abcString in the callback when rendering.
+
+* Allow multiple overlays in the same measure.
+
+* Add `%%tripletfont` directive.
+
+* Add unicode versions of flats and sharps in midi chords.
+
+* Support `%%MIDI beat` command.
+
+* Support `%%MIDI gchordoff` and `%%MIDI gchordon`.
+
+## Bug fixes:
+
+* The tune positions were off by one because a newline is removed for each tune and was not counted.
+
+* Fix crash in `renderAbc` if the output container isn't an html element.
+
+* Fix default tempo in animation for compound meters to match the MIDI interpretation.
+
+* Refactored the animation to use the TimingCallbacks instead of duplicating code.
+
+* Fix a couple of bugs when sequencing elements for the TimingCallbacks and animation.
+
+* Center the time signature better (particularly 12/8).
+
+* Add extra space to the left of bar lines.
+
+* Add extra space to the width of a note when there is an accidental.
+
+* Lots of refactoring of the engraving code.
+
+* Fix crash when using `barsperstaff`.
+
+* Fix usage of `staffnonote`
+
+* In TimingCallbacks, make `extraMeasuresAtBeginning` default to 0.
+
+# Version 5.2.0
+
+## Features
+
+* Add a version of the plugin that supports midi.
+
+* Add getMeterFraction() convenience function.
+
+* Add a generic timer that provides callbacks in time with the music.
+
+* Small change to classes: add `abcjs-n...` to rests; add duration to triplet marks.
+
+## Bug fixes:
+
+* Correct the speed of animation in 3/8 meter.
+
+* Fix accidentally creating a global variable.
+
 # Version 5.1.2
 
 ## Bug fixes:
 
-Fix horizontal spacing calculation for multiline text.
+* Fix horizontal spacing calculation for multiline text.
 
 # Version 5.1.1
 
 ## Bug fixes:
 
-Fix regression for having the SVG responsive.
+* Fix regression for having the SVG responsive.
 
 # Version 5.1.0
 

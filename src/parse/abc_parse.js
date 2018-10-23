@@ -68,6 +68,7 @@ var Parse = function() {
 			this.staves = [];
 			this.macros = {};
 			this.currBarNumber = 1;
+			this.barCounter = {};
 			this.inTextBlock = false;
 			this.inPsBlock = false;
 			this.ignoredDecorations = [];
@@ -101,6 +102,7 @@ var Parse = function() {
 				if (this.differentFont("annotationfont", defaultFonts)) addFont(el, 'annotationfont', this.annotationfont);
 				if (this.differentFont("gchordfont", defaultFonts)) addFont(el, 'gchordfont', this.gchordfont);
 				if (this.differentFont("vocalfont", defaultFonts)) addFont(el, 'vocalfont', this.vocalfont);
+				if (this.differentFont("tripletfont", defaultFonts)) addFont(el, 'tripletfont', this.tripletfont);
 			} else if (elType === 'bar') {
 				if (this.dynamicPosition !== 'auto') addPositioning(el, 'dynamicPosition', this.dynamicPosition);
 				if (this.chordPosition !== 'auto') addPositioning(el, 'chordPosition', this.chordPosition);
@@ -900,6 +902,8 @@ var Parse = function() {
 			params.name = multilineVars.currentVoice.name;
 		if (multilineVars.vocalfont)
 			params.vocalfont = multilineVars.vocalfont;
+		if (multilineVars.tripletfont)
+			params.tripletfont = multilineVars.tripletfont;
 		if (multilineVars.style)
 			params.style = multilineVars.style;
 		if (multilineVars.currentVoice) {
@@ -1262,6 +1266,15 @@ var Parse = function() {
 						el = {};
 					}
 					i += ret[0];
+					var cv = multilineVars.currentVoice ? multilineVars.currentVoice.staffNum + '-' + multilineVars.currentVoice.index : 'ONLY';
+					if (multilineVars.lineBreaks) {
+						if (!multilineVars.barCounter[cv])
+							multilineVars.barCounter[cv] = 0;
+						var breakNow = multilineVars.lineBreaks[''+multilineVars.barCounter[cv]];
+						multilineVars.barCounter[cv]++;
+						if (breakNow)
+							startNewLine();
+					}
 				} else if (line[i] === '&') {	// backtrack to beginning of measure
 					warn("Overlay not yet supported", line, i);
 					i++;
@@ -1488,7 +1501,8 @@ var Parse = function() {
 								addEndBeam(el);
 
 							// If there is a whole rest, then it should be the duration of the measure, not it's own duration. We need to special case it.
-							if (el.rest && el.rest.type === 'rest' && el.duration === 1) {
+							// If the time signature length is greater than 4/4, though, then a whole rest has no special treatment.
+							if (el.rest && el.rest.type === 'rest' && el.duration === 1 && durationOfMeasure(multilineVars) <= 1) {
 								el.rest.type = 'whole';
 
 								el.duration = durationOfMeasure(multilineVars);
@@ -1515,7 +1529,7 @@ var Parse = function() {
 		var ret = header.parseHeader(line);
 		if (ret.regular)
 			parseRegularMusicLine(ret.str);
-		if (ret.newline && multilineVars.continueall === undefined)
+		if (ret.newline)
 			startNewLine();
 		if (ret.words)
 			addWords(tune.getCurrentVoice(), line.substring(2));
@@ -1588,6 +1602,13 @@ var Parse = function() {
 				multilineVars.globalTranspose = undefined;
 		} else
 			multilineVars.globalTranspose = undefined;
+		if (switches.lineBreaks) {
+			// change the format of the the line breaks for easy testing.
+			multilineVars.lineBreaks = {};
+			multilineVars.continueall = true;
+			for (var i = 0; i < switches.lineBreaks.length; i++)
+				multilineVars.lineBreaks[''+switches.lineBreaks[i]] = true;
+		}
 		header.reset(tokenizer, warn, multilineVars, tune);
 
 		// Take care of whatever line endings come our way

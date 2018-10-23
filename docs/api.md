@@ -19,6 +19,7 @@ The main entry point is `ABCJS.renderAbc`. Many users won't need to make any oth
 | `ABCJS.midi.restartPlaying()` | Moves the progress back to the beginning for whatever is currently playing. |
 | `ABCJS.midi.setRandomProgress(percent)` | Moves the progress to whatever percent is passed in for whatever is currently playing. |
 | `ABCJS.midi.setLoop(targetEl, state)` | Sets the "loop" mode for the element passed in. State should be true or false. |
+| `new abcjs.TimingCallbacks(outputElement, timingParams)` | returns an object with the properties `start()`, `stop()`, `pause()`, `reset()`. This will cause callback functions to be called for each beat and for each note. (see timingParams for more details) |
 
 | Parameters | Description |
 | ------------- | ----------- |
@@ -36,6 +37,7 @@ The main entry point is `ABCJS.renderAbc`. Many users won't need to make any oth
 | `header_only` | false | only parse the header |
 | `stop_on_warning` | false | only parse until the first warning is encountered |
 | `hint_measures` | false | repeat the next measure at the end of the previous line, with a unique css class. |
+| `wrap` | null | NOTE: this requires the parameter `staffwidth` to be set! To have the parser ignore the line breaks, and figure out the line breaks based on the size of each measure. This is an object of: `minSpacing`: 1 means to pack the notes as close as possible, 2 means to double the spacing, etc., `onlyLineLimit`: if there is very little music and a wide line, then the line is shortened so the notes are not too spread out, `lastLineLimit`: if it works out that there is a single measure on the last line, then try different `minSpacing` values until the last line is no more spread out than this limit. A reasonable default for these values is `{ minSpacing: 1.5, onlyLineLimit: 4, lastLineLimit: 3 }`. |
 
 | `params` (for engraver) | Default | Description |
 | ------------- | ----------- | ----------- |
@@ -151,12 +153,21 @@ Note that the default soundfont that is used by abcjs contains sounds for pitche
 | `scrollHorizontal` | false | Should there be a horizontal scrollbar if the music is wider than the viewport? (requires viewportHorizontal to be true.) |
 | `oneSvgPerLine` | false | Should each system of staves be rendered to a different SVG? This makes controlling with CSS easier, and makes it possible to paginate cleanly.
 
+| `timingParams` | Default | Description |
+| ------------- | ------- | ----------- |
+| `qpm` | whatever is in the Q: field | Number of beats per minute. |
+| `extraMeasuresAtBeginning` | 0 | Don't start the callbacks right away, but insert these number of measures first. |
+| `beatCallback` | null | Called for each beat passing the beat number (starting at 0). |
+| `eventCallback` | null | Called for each event (either a note, a rest, or a chord, and notes in separate voices are grouped together.) |
+| `lineEndCallback` | null | Called at the end of each line. (This is useful if you want to be sure the music is scrolled into view at the right time.) See `lineEndAnticipation` for more details. |
+| `lineEndAnticipation` | 0 | The number of milliseconds for the `lineEndCallback` to anticipate end of the line. That is, if you want to get the callback half a second before the end of the line, use 500. |
+
 | `animationParams` | Default | Description |
 | ------------- | ----------- | ----------- |
 | `hideFinishedMeasures` | false | true or false |
 | `hideCurrentMeasure` | false | true or false |
 | `showCursor` | false | true or false |
-| `bpm` | whatever is in the Q: field | number of beats per minute. |
+| `bpm` | whatever is in the Q: field | Number of beats per minute. |
 
 NOTE: To use animation, you MUST have `{ add_classes: true }` in the `engraverParams`. Also, the cursor is not visible unless you add some css. Often this will be something like either `.cursor { background-color: #ffffc0; opacity: 0.5 }` or `.cursor { border-left: 1px solid black; }`
 
@@ -211,6 +222,29 @@ If you use, `{ add_classes: true }`, then the following classes are attached to 
 | abcjs-beam-elem | The beams connecting eighth notes together. |
 | abcjs-top-line | This marks the top line of each staff. This is useful if you are trying to find where on the page the music has been drawn. |
 | abcjs-top-of-system | This marks the top of each set of staves. This is useful if you are trying to find where on the page the music has been drawn. |
+
+To get a visual idea of how these classes are applied, see https://configurator.abcjs.net/classes and experiment.
+
+### changing colors
+
+If you want to just change everything to one other color, you can do something like:
+```
+<style>
+    svg {
+        fill: pink;
+        stroke: pink;
+    }
+<style>
+```
+If you want more control, you can use the classes. For instance, to turn only the horizontal staff lines pink, do this instead:
+```
+<style>
+    svg .abcjs-staff {
+        fill: pink;
+        stroke: pink;
+    }
+<style>
+```
 
 # abcjs editor
 

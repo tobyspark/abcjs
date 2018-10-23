@@ -1,6 +1,6 @@
-# abcjs
+![abcjs](https://cdn.rawgit.com/paulrosen/abcjs/master/docs/abcjs_comp_extended_08.svg)
 
-**javascript for rendering abc music notation**
+# Javascript library for rendering standard music notation in a browser.
 
 This library makes it easy to incorporate **sheet music** into your **websites**. You can also turn visible **ABC** text into sheet music on websites that you don't own using a greasemonkey script, or change your own website that contains ABC text with no other changes than the addition of one javascript file. You can also generate **MIDI files** or play them directly in your browser.
 
@@ -8,7 +8,7 @@ This library makes it easy to incorporate **sheet music** into your **websites**
 
 * The visual part of this library is supported from IE9 and newer, Safari 5.1 and newer, and all modern browsers.
 
-* The audio part of this library is much more limited: it doesn't work in IE, it only works in Safari 9 and 10, it does NOT work in Edge, but does work fine in all other modern browsers.
+* The audio part of this library is much more limited: it doesn't work in IE, it only works in Safari 10 and newer, it does NOT work in Edge, but does work fine in all other modern browsers.
 Note that it takes computer resources to play the sound, so a sufficiently fast computer is needed. Research is being done to improve the performance in future versions.
 
 ## **Special notes for Version 5.0.0:**
@@ -92,17 +92,21 @@ If you want to include MIDI playback, then use `abcjs-midi`. This is a superset 
 
 If you already have ABC notation on your page and don't want to modify the page more than you have to, then you can use `abcjs-plugin`, which will render all ABC that it finds on the page on page load, simply by including one line: the line to include the script. Another use of this is if you have a comment section on a blog, then you can allow users to post ABC tunes and they will appear as sheet music automatically.
 
+If you want to use the plugin, but also want MIDI, you can use `abcjs-plugin-midi`. This only works on relatively modern browsers. This also requires some CSS to be added to see the MIDI control.
+
 If you are looking at someone else's website and see ABC on the page and want to see what it looks like in standard notation, you can install the greasemonkey script in FireFox or Chrome and it will render the ABC for you.
 
 Here are the latest versions. You can just download one of these:
 
-- [Basic](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_basic_5.1.2-min.js)
+- [Basic](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_basic_5.3.5-min.js)
 
-- [Basic+MIDI](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_midi_5.1.2-min.js)
+- [Basic+MIDI](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_midi_5.3.5-min.js)
 
-- [Plugin](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin_5.1.2-min.js)
+- [Plugin](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin_5.3.5-min.js)
 
-- [Greasemonkey script](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin_5.1.2.user.js)
+- [Plugin+MIDI](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin-midi_5.3.5-min.js)
+
+- [Greasemonkey script](https://raw.github.com/paulrosen/abcjs/master/bin/abcjs_plugin_5.3.5.user.js)
 
 - [Styles for the MIDI control](https://raw.github.com/paulrosen/abcjs/master/abcjs-midi.css)
 
